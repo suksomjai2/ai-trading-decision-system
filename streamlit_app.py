@@ -1,5 +1,10 @@
 import streamlit as st
 
+from core.market_state import MarketState
+from core.feature_engine import FeatureEngine
+from core.decision_engine import DecisionEngine
+from core.risk_engine import RiskEngine
+
 
 st.set_page_config(
     page_title="AI Trading Decision System",
@@ -7,138 +12,86 @@ st.set_page_config(
 )
 
 
-st.title("🧠 AI Trading Decision System v0.1")
+st.title("🧠 AI Trading Decision System")
+st.subheader("XAUUSD AI Analysis Dashboard")
 
-st.subheader("XAUUSD Market Analysis")
+
+# Initialize engines
+
+market_engine = MarketState()
+feature_engine = FeatureEngine()
+decision_engine = DecisionEngine()
+risk_engine = RiskEngine()
 
 
-# Market Overview
+# Sample market data
+market_data = {
+    "open": 2650,
+    "high": 2665,
+    "low": 2645,
+    "close": 2660,
+    "volume": 1200000
+}
+
+
+# Feature extraction
+
+features = feature_engine.calculate_features(
+    market_data
+)
+
+
+# Market state
+
+market_state = market_engine.analyze(
+    market_data
+)
+
+
+# Decision
+
+decision = decision_engine.evaluate(
+    market_state,
+    features
+)
+
+
+# Risk
+
+risk = risk_engine.evaluate(
+    decision,
+    features
+)
+
+
 
 col1, col2, col3 = st.columns(3)
 
 
 with col1:
     st.metric(
-        "Current Price",
-        "4282"
+        "Market State",
+        market_state["state"]
     )
 
 
 with col2:
     st.metric(
-        "H4 Trend",
-        "DOWN"
+        "Decision",
+        decision
     )
 
 
 with col3:
     st.metric(
-        "AI Confidence",
-        "65%"
+        "Risk Level",
+        risk
     )
 
 
 st.divider()
 
 
-# Indicators
+st.write("### Market Features")
 
-st.subheader("Technical Indicators")
-
-
-indicators = {
-
-"EMA20":"4285",
-
-"EMA50":"4290",
-
-"RSI":"38",
-
-"ATR":"18",
-
-"Volume":"Normal"
-
-}
-
-
-for k,v in indicators.items():
-    st.write(
-        f"{k}: {v}"
-    )
-
-
-
-st.divider()
-
-
-# Structure
-
-st.subheader("Market Structure")
-
-
-st.write(
-"""
-H4:
-- Lower High
-- Price below EMA
-- Downtrend
-
-
-M15:
-- Looking for Technical Rebound
-- Waiting Support Confirmation
-"""
-)
-
-
-
-st.divider()
-
-
-# AI Decision
-
-st.subheader("AI Decision Engine")
-
-
-st.warning(
-"""
-WAIT
-
-เหตุผล:
-
-Trend ใหญ่ยังลง
-
-รอ:
-- Support Zone
-- Reversal Signal
-- Momentum ลดลง
-
-ก่อนเปิด Position
-"""
-)
-
-
-
-st.divider()
-
-
-# Trade Plan
-
-st.subheader("Trade Plan")
-
-
-st.write(
-"""
-Entry:
-AI Calculate
-
-
-Add Position:
-Risk Management
-
-
-Exit:
-Technical Rebound Target
-
-"""
-)
+st.json(features)
