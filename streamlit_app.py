@@ -59,18 +59,7 @@ market_state = market_engine.analyze(
 )
 
 
-# Convert Market State
-
-if isinstance(market_state, dict):
-
-    state_value = market_state.get(
-        "state",
-        "UNKNOWN"
-    )
-
-else:
-
-    state_value = market_state
+state_value = market_state["state"]
 
 
 
