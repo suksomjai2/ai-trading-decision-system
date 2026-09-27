@@ -1,5 +1,6 @@
 import streamlit as st
-
+import core.market_state
+st.write(core.market_state.__file__)
 from core.market_state import MarketState
 from core.feature_engine import FeatureEngine
 from core.decision_engine import DecisionEngine
