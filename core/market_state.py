@@ -5,7 +5,6 @@ class MarketState:
         pass
 
 
-
     def analyze(self, market_data):
 
         open_price = market_data["open"]
@@ -41,12 +40,14 @@ class MarketState:
 
 
         # =========================
-        # Return Market State
+        # Output
         # =========================
 
         return {
 
             "state": state,
+
+            "market_state": state,
 
             "price_range": price_range,
 
