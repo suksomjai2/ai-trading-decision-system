@@ -67,12 +67,11 @@ market_data = {
 market_state = MarketState().analyze(
     market_data
 )
-st.write("DEBUG RAW MARKET STATE")
+st.write("TYPE")
+st.write(type(market_state))
+
+st.write("RAW")
 st.write(market_state)
-
-st.write("STATE VALUE TEST")
-st.write(market_state["state"])
-
 
 
 
