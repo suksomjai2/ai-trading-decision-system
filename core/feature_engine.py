@@ -17,7 +17,9 @@ class FeatureEngine:
             "high": high,
             "low": low,
             "close": close,
-
+    "body_size": abs(close - open_price),
+    "upper_shadow": high - max(open_price, close),
+    "lower_shadow": min(open_price, close) - low,
             "price_range": self._price_range(
                 high,
                 low
@@ -31,6 +33,12 @@ class FeatureEngine:
 
             "volume_state": self._volume_state(
                 volume
+            ),    
+             "trend_strength": self._trend_strength(
+    close,
+    high,
+    low
+),   
             )
         }
 
@@ -55,7 +63,15 @@ class FeatureEngine:
         else:
             return "NEUTRAL"
 
+def _trend_strength(self, close, high, low):
 
+    range_value = high - low
+
+    if range_value == 0:
+
+        return 0
+
+    return abs(close - ((high + low) / 2))
     def _volume_state(self, volume):
 
         if volume <= 0:
