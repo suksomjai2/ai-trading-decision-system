@@ -3,6 +3,7 @@ class FeatureEngine:
     def __init__(self):
         pass
 
+
     def calculate_features(self, market_data):
 
         open_price = market_data["open"]
@@ -17,13 +18,19 @@ class FeatureEngine:
             "high": high,
             "low": low,
             "close": close,
-    "body_size": abs(close - open_price),
-    "upper_shadow": high - max(open_price, close),
-    "lower_shadow": min(open_price, close) - low,
+
+            "body_size": abs(close - open_price),
+
+            "upper_shadow": high - max(open_price, close),
+
+            "lower_shadow": min(open_price, close) - low,
+
+
             "price_range": self._price_range(
                 high,
                 low
             ),
+
 
             "trend_direction": self._trend_direction(
                 close,
@@ -31,23 +38,28 @@ class FeatureEngine:
                 low
             ),
 
+
             "volume_state": self._volume_state(
                 volume
-            ),    
-             "trend_strength": self._trend_strength(
-    close,
-    high,
-    low
-),   
+            ),
+
+
+            "trend_strength": self._trend_strength(
+                close,
+                high,
+                low
             )
+
         }
 
         return features
 
 
+
     def _price_range(self, high, low):
 
         return high - low
+
 
 
     def _trend_direction(self, close, high, low):
@@ -63,21 +75,29 @@ class FeatureEngine:
         else:
             return "NEUTRAL"
 
-def _trend_strength(self, close, high, low):
 
-    range_value = high - low
 
-    if range_value == 0:
+    def _trend_strength(self, close, high, low):
 
-        return 0
+        range_value = high - low
 
-    return abs(close - ((high + low) / 2))
+        if range_value == 0:
+            return 0
+
+        strength = abs(
+            close - ((high + low) / 2)
+        )
+
+        return round(strength, 2)
+
+
+
     def _volume_state(self, volume):
 
         if volume <= 0:
             return "UNKNOWN"
 
-        elif volume > 1000000:
+        elif volume > 100000:
             return "HIGH"
 
         else:
