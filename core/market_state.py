@@ -5,71 +5,36 @@ class MarketState:
         pass
 
 
-
     def analyze(self, market_data):
-
-        # ======================
-        # Input
-        # ======================
 
         open_price = market_data["open"]
         close = market_data["close"]
         high = market_data["high"]
         low = market_data["low"]
-        volume = market_data.get("volume", 0)
 
 
-
-        # ======================
-        # Trend Direction
-        # ======================
+        # Trend
 
         if close > open_price:
 
             state = "BULLISH"
-            trend_direction = "UP"
 
         elif close < open_price:
 
             state = "BEARISH"
-            trend_direction = "DOWN"
 
         else:
 
             state = "NEUTRAL"
-            trend_direction = "SIDEWAY"
 
 
 
-        # ======================
         # Momentum
-        # ======================
 
         price_range = high - low
 
 
-
-        # ======================
-        # Volume Analysis
-        # ======================
-
-        if volume >= 1000000:
-
-            volume_state = "HIGH"
-
-        elif volume >= 500000:
-
-            volume_state = "MEDIUM"
-
-        else:
-
-            volume_state = "LOW"
-
-
-
-        # ======================
         # Output
-        # ======================
 
         return {
 
@@ -79,8 +44,10 @@ class MarketState:
 
             "price_range": price_range,
 
-            "trend_direction": trend_direction,
+            "trend_direction":
+                "UP" if close > open_price else "DOWN",
 
-            "volume_state": volume_state
+            "volume_state":
+                "HIGH"
 
         }
