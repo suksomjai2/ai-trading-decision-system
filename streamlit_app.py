@@ -25,6 +25,7 @@ risk_engine = RiskEngine()
 
 
 # Sample market data
+
 market_data = {
     "open": 2650,
     "high": 2665,
@@ -50,7 +51,7 @@ market_state = market_engine.analyze(
 
 # Decision
 
-decision = decision_engine.evaluate(
+decision = decision_engine.decide(
     market_state,
     features
 )
@@ -64,29 +65,48 @@ risk = risk_engine.evaluate(
 )
 
 
+# Display
 
 col1, col2, col3 = st.columns(3)
 
 
 with col1:
-    st.metric(
-        "Market State",
-        market_state["state"]
-    )
+    if isinstance(market_state, dict):
+        st.metric(
+            "Market State",
+            market_state.get("state", "UNKNOWN")
+        )
+    else:
+        st.metric(
+            "Market State",
+            market_state
+        )
 
 
 with col2:
-    st.metric(
-        "Decision",
-        decision
-    )
+    if isinstance(decision, dict):
+        st.metric(
+            "Decision",
+            decision.get("action", "HOLD")
+        )
+    else:
+        st.metric(
+            "Decision",
+            decision
+        )
 
 
 with col3:
-    st.metric(
-        "Risk Level",
-        risk
-    )
+    if isinstance(risk, dict):
+        st.metric(
+            "Risk Level",
+            risk.get("level", "UNKNOWN")
+        )
+    else:
+        st.metric(
+            "Risk Level",
+            risk
+        )
 
 
 st.divider()
@@ -95,3 +115,13 @@ st.divider()
 st.write("### Market Features")
 
 st.json(features)
+
+
+st.write("### Decision Detail")
+
+st.json(decision)
+
+
+st.write("### Risk Detail")
+
+st.json(risk)
