@@ -5,64 +5,186 @@ class DecisionEngine:
         pass
 
 
-    def decide(self, market_state, features):
+
+    def decide(
+        self,
+        state,
+        features
+    ):
 
 
-        trend = features.get(
-            "trend_direction",
-            "NEUTRAL"
+        score = 0
+
+
+        # ======================
+        # Trend Direction
+        # ======================
+
+        if features.get(
+            "trend_direction"
+        ) == "UP":
+
+            score += 2
+
+
+        elif features.get(
+            "trend_direction"
+        ) == "DOWN":
+
+            score -= 2
+
+
+
+        # ======================
+        # Trend Strength
+        # ======================
+
+        trend_strength = features.get(
+            "trend_strength",
+            0
         )
 
 
-        volume = features.get(
-            "volume_state",
-            "UNKNOWN"
+        score += min(
+            trend_strength / 2,
+            2
         )
 
 
-        # Bullish condition
 
-        if (
-            market_state == "BULLISH"
-            and trend == "UP"
-            and volume == "HIGH"
-        ):
+        # ======================
+        # Volume
+        # ======================
 
-            return {
+        if features.get(
+            "volume_state"
+        ) == "HIGH":
 
-                "action": "BUY",
-
-                "confidence": 0.8
-
-            }
+            score += 1
 
 
 
-        # Bearish condition
+        # ======================
+        # Momentum
+        # ======================
 
-        elif (
-            market_state == "BEARISH"
-            and trend == "DOWN"
-        ):
-
-            return {
-
-                "action": "SELL",
-
-                "confidence": 0.8
-
-            }
+        momentum = features.get(
+            "momentum",
+            0
+        )
 
 
+        if momentum > 0:
 
-        # Neutral
+            score += min(
+                momentum / 10,
+                2
+            )
+
+
+
+        # ======================
+        # Candle
+        # ======================
+
+        if features.get(
+            "candle_type"
+        ) == "BULLISH":
+
+            score += 1
+
+
+
+        # ======================
+        # Price Position
+        # ======================
+
+        price_position = features.get(
+            "price_position",
+            0.5
+        )
+
+
+        if price_position < 0.8:
+
+            score += 1
 
         else:
 
-            return {
+            score -= 0.5
 
-                "action": "HOLD",
 
-                "confidence": 0.5
 
-            }
+        # ======================
+        # Volatility penalty
+        # ======================
+
+        volatility = features.get(
+            "volatility",
+            0
+        )
+
+
+        if volatility > 0.02:
+
+            score -= 1
+
+
+
+        # ======================
+        # Normalize
+        # ======================
+
+        max_score = 10
+
+        confidence = score / max_score
+
+
+        confidence = max(
+            0,
+            min(
+                confidence,
+                1
+            )
+        )
+
+
+
+        # ======================
+        # Decision
+        # ======================
+
+        if score >= 6:
+
+            action = "BUY"
+
+
+        elif score <= 3:
+
+            action = "SELL"
+
+
+        else:
+
+            action = "HOLD"
+
+
+
+        return {
+
+
+            "action": action,
+
+
+            "score": round(
+                score,
+                2
+            ),
+
+
+            "confidence": round(
+                confidence,
+                2
+            )
+
+        }
