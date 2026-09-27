@@ -1,6 +1,5 @@
 import streamlit as st
-import core.market_state
-st.write(core.market_state.__file__)
+
 from core.market_state import MarketState
 from core.feature_engine import FeatureEngine
 from core.decision_engine import DecisionEngine
@@ -51,7 +50,21 @@ market_data = {
 
 
 # =========================
-# Feature Extraction
+# TEST MARKET STATE
+# =========================
+
+market_state = MarketState().analyze(
+    market_data
+)
+
+
+st.write("MARKET STATE TEST")
+st.write(market_state)
+
+
+
+# =========================
+# Feature
 # =========================
 
 features = feature_engine.calculate_features(
@@ -59,41 +72,20 @@ features = feature_engine.calculate_features(
 )
 
 
+
 # =========================
-# Market State
+# Convert State
 # =========================
 
-market_state = market_engine.analyze(
-    market_data
+state_value = market_state.get(
+    "state",
+    "UNKNOWN"
 )
 
-st.write("FULL MARKET STATE:")
-st.write(market_state)
-
-st.write("CHECK TYPE:")
-st.write(type(market_state))
 
 
 # =========================
-# Convert Market State
-# =========================
-
-if isinstance(market_state, dict):
-
-    state_value = (
-        market_state.get("state")
-        or market_state.get("market_state")
-        or "UNKNOWN"
-    )
-
-else:
-
-    state_value = market_state
-
-
-
-# =========================
-# Decision Engine
+# Decision
 # =========================
 
 decision = decision_engine.decide(
@@ -104,29 +96,7 @@ decision = decision_engine.decide(
 
 
 # =========================
-# DEBUG
-# =========================
-
-st.write("===== DEBUG =====")
-
-st.write("RAW MARKET STATE:")
-st.write(market_state)
-
-st.write("STATE VALUE:")
-st.write(state_value)
-
-st.write("FEATURES:")
-st.write(features)
-
-st.write("DECISION:")
-st.write(decision)
-
-st.write("=================")
-
-
-
-# =========================
-# Risk Engine
+# Risk
 # =========================
 
 risk = risk_engine.evaluate(
@@ -143,9 +113,6 @@ risk = risk_engine.evaluate(
 col1, col2, col3 = st.columns(3)
 
 
-
-# Market State
-
 with col1:
 
     st.metric(
@@ -154,79 +121,39 @@ with col1:
     )
 
 
-
-# Decision
-
 with col2:
 
-    if isinstance(decision, dict):
-
-        st.metric(
-            "Decision",
-            decision.get(
-                "action",
-                "HOLD"
-            )
+    st.metric(
+        "Decision",
+        decision.get(
+            "action",
+            "HOLD"
         )
+    )
 
-    else:
-
-        st.metric(
-            "Decision",
-            decision
-        )
-
-
-
-# Risk
 
 with col3:
 
-    if isinstance(risk, dict):
-
-        st.metric(
-            "Risk Level",
-            risk.get(
-                "risk_level",
-                risk.get(
-                    "level",
-                    "UNKNOWN"
-                )
-            )
+    st.metric(
+        "Risk Level",
+        risk.get(
+            "risk_level",
+            "UNKNOWN"
         )
-
-    else:
-
-        st.metric(
-            "Risk Level",
-            risk
-        )
+    )
 
 
-
-# =========================
-# Detail
-# =========================
 
 st.divider()
 
 
 st.write("### Market Features")
-
-st.json(
-    features
-)
+st.json(features)
 
 
 st.write("### Decision Detail")
-
-st.json(
-    decision
-)
+st.json(decision)
 
 
 st.write("### Risk Detail")
-
-st.json(
-    risk
-)
+st.json(risk)
