@@ -11,6 +11,7 @@ class MarketState:
         close = market_data["close"]
         high = market_data["high"]
         low = market_data["low"]
+        volume = market_data.get("volume", 0)
 
 
         # =========================
@@ -19,23 +20,46 @@ class MarketState:
 
         if close > open_price:
 
-            state = "BULLISH"
+            market_state = "BULLISH"
+            trend_direction = "UP"
+
 
         elif close < open_price:
 
-            state = "BEARISH"
+            market_state = "BEARISH"
+            trend_direction = "DOWN"
+
 
         else:
 
-            state = "NEUTRAL"
+            market_state = "NEUTRAL"
+            trend_direction = "SIDEWAY"
 
 
 
         # =========================
-        # Momentum
+        # Price Momentum
         # =========================
 
         price_range = high - low
+
+
+
+        # =========================
+        # Volume State
+        # =========================
+
+        if volume > 1000000:
+
+            volume_state = "HIGH"
+
+        elif volume > 500000:
+
+            volume_state = "MEDIUM"
+
+        else:
+
+            volume_state = "LOW"
 
 
 
@@ -45,15 +69,20 @@ class MarketState:
 
         return {
 
-            "state": state,
+            # สำคัญ ต้องมี key นี้
+            "state": market_state,
 
-            "market_state": state,
+
+            # ใช้แสดงรายละเอียด
+            "market_state": market_state,
+
 
             "price_range": price_range,
 
-            "trend_direction":
-                "UP"
-                if close > open_price
-                else "DOWN"
+
+            "trend_direction": trend_direction,
+
+
+            "volume_state": volume_state
 
         }
