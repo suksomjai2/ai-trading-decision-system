@@ -35,15 +35,11 @@ class MarketState:
 
 
         return {
-
-            "state": state,
-
-            "price_range": price_range,
-
-            "trend_direction": (
-                "UP"
-                if close > open_price
-                else "DOWN"
-            )
-
-        }
+    "market_state": state,
+    "price_range": price_range,
+    "trend_direction": (
+        "UP"
+        if close > open_price
+        else "DOWN"
+    )
+}
