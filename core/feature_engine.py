@@ -16,15 +16,13 @@ class FeatureEngine:
         features = {
 
             "open": open_price,
-
             "high": high,
-
             "low": low,
-
             "close": close,
 
 
-            # Candle features
+            # Candle Structure
+
             "body_size": abs(close - open_price),
 
             "upper_shadow": high - max(open_price, close),
@@ -32,7 +30,8 @@ class FeatureEngine:
             "lower_shadow": min(open_price, close) - low,
 
 
-            # Price movement
+            # Price Movement
+
             "price_range": self._price_range(
                 high,
                 low
@@ -40,6 +39,7 @@ class FeatureEngine:
 
 
             # Trend
+
             "trend_direction": self._trend_direction(
                 close,
                 high,
@@ -47,13 +47,6 @@ class FeatureEngine:
             ),
 
 
-            # Volume
-            "volume_state": self._volume_state(
-                volume
-            ),
-
-
-            # New Phase 2 features
             "trend_strength": self._trend_strength(
                 close,
                 high,
@@ -61,13 +54,46 @@ class FeatureEngine:
             ),
 
 
+            # Volume
+
+            "volume_state": self._volume_state(
+                volume
+            ),
+
+
+            # Momentum
+
             "momentum": close - open_price,
 
+
+            # Volatility
 
             "volatility": self._volatility(
                 high,
                 low,
                 close
+            ),
+
+
+            # Phase 2.3
+
+            "price_position": self._price_position(
+                close,
+                high,
+                low
+            ),
+
+
+            "candle_type": self._candle_type(
+                open_price,
+                close
+            ),
+
+
+            "buying_pressure": self._buying_pressure(
+                close,
+                high,
+                low
             )
 
         }
@@ -91,10 +117,8 @@ class FeatureEngine:
         if close > midpoint:
             return "UP"
 
-
         elif close < midpoint:
             return "DOWN"
-
 
         else:
             return "NEUTRAL"
@@ -120,6 +144,48 @@ class FeatureEngine:
         return round(
             (high - low) / close,
             4
+        )
+
+
+
+    def _price_position(self, close, high, low):
+
+        if high == low:
+            return 0
+
+
+        return round(
+            (close - low) / (high - low),
+            2
+        )
+
+
+
+    def _candle_type(self, open_price, close):
+
+        body = close - open_price
+
+
+        if body > 0:
+            return "BULLISH"
+
+        elif body < 0:
+            return "BEARISH"
+
+        else:
+            return "DOJI"
+
+
+
+    def _buying_pressure(self, close, high, low):
+
+        if high == low:
+            return 0
+
+
+        return round(
+            (close - low) / (high - low),
+            2
         )
 
 
