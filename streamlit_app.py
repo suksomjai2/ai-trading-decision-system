@@ -1,5 +1,12 @@
 import streamlit as st
+import core.market_state
+import inspect
 
+st.write("PATH:")
+st.write(core.market_state.__file__)
+
+st.write("SOURCE:")
+st.code(inspect.getsource(core.market_state.MarketState.analyze))
 from core.market_state import MarketState
 from core.feature_engine import FeatureEngine
 from core.decision_engine import DecisionEngine
