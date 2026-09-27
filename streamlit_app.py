@@ -6,7 +6,9 @@ from core.decision_engine import DecisionEngine
 from core.risk_engine import RiskEngine
 
 
+# =========================
 # Page Config
+# =========================
 
 st.set_page_config(
     page_title="AI Trading Decision System",
@@ -14,13 +16,17 @@ st.set_page_config(
 )
 
 
+# =========================
 # Title
+# =========================
 
 st.title("🧠 AI Trading Decision System")
 st.subheader("XAUUSD AI Analysis Dashboard")
 
 
+# =========================
 # Initialize Engines
+# =========================
 
 market_engine = MarketState()
 feature_engine = FeatureEngine()
@@ -28,7 +34,9 @@ decision_engine = DecisionEngine()
 risk_engine = RiskEngine()
 
 
-# Sample Market Data
+# =========================
+# Market Data
+# =========================
 
 market_data = {
 
@@ -59,7 +67,18 @@ market_state = market_engine.analyze(
 )
 
 
-state_value = market_state["state"]
+# Convert Market State
+
+if isinstance(market_state, dict):
+
+    state_value = market_state.get(
+        "state",
+        "UNKNOWN"
+    )
+
+else:
+
+    state_value = market_state
 
 
 
@@ -93,8 +112,6 @@ col1, col2, col3 = st.columns(3)
 
 
 
-# Market State
-
 with col1:
 
     st.metric(
@@ -103,8 +120,6 @@ with col1:
     )
 
 
-
-# Decision
 
 with col2:
 
@@ -127,8 +142,6 @@ with col2:
 
 
 
-# Risk
-
 with col3:
 
     if isinstance(risk, dict):
@@ -137,10 +150,7 @@ with col3:
             "Risk Level",
             risk.get(
                 "risk_level",
-                risk.get(
-                    "level",
-                    "UNKNOWN"
-                )
+                "UNKNOWN"
             )
         )
 
@@ -154,7 +164,7 @@ with col3:
 
 
 # =========================
-# Details
+# Detail
 # =========================
 
 st.divider()
