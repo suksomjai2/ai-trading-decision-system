@@ -5,6 +5,7 @@ class MarketState:
         pass
 
 
+
     def analyze(self, market_data):
 
         open_price = market_data["open"]
@@ -13,7 +14,9 @@ class MarketState:
         low = market_data["low"]
 
 
+        # =========================
         # Trend Direction
+        # =========================
 
         if close > open_price:
 
@@ -29,17 +32,27 @@ class MarketState:
 
 
 
+        # =========================
         # Momentum
+        # =========================
 
         price_range = high - low
 
 
+
+        # =========================
+        # Return Market State
+        # =========================
+
         return {
-    "market_state": state,
-    "price_range": price_range,
-    "trend_direction": (
-        "UP"
-        if close > open_price
-        else "DOWN"
-    )
-}
+
+            "state": state,
+
+            "price_range": price_range,
+
+            "trend_direction":
+                "UP"
+                if close > open_price
+                else "DOWN"
+
+        }
