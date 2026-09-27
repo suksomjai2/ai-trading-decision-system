@@ -66,8 +66,12 @@ features = feature_engine.calculate_features(
 market_state = market_engine.analyze(
     market_data
 )
+
 st.write("FULL MARKET STATE:")
 st.write(market_state)
+
+st.write("CHECK TYPE:")
+st.write(type(market_state))
 
 
 # =========================
