@@ -1,217 +1,362 @@
+from core.decision_engine import DecisionEngine
+
+
 class MarketState:
 
     def __init__(self):
-        pass
 
+        self.decision_engine = DecisionEngine()
+
+
+    # =========================
+    # Market Analysis
+    # =========================
 
     def analyze(self, market_data):
 
-        features = self._extract_features(market_data)
+        features = self._extract_features(
+            market_data
+        )
 
-        decision = self._make_decision(features)
+        state = features.get(
+            "trend_direction",
+            "NEUTRAL"
+        )
+
+        decision = self.decision_engine.decide(
+            state,
+            features
+        )
 
         return {
+            "state": state,
             "features": features,
             "decision": decision
         }
 
 
-    def _extract_features(self, market_data):
+    # =========================
+    # Feature Extraction
+    # =========================
 
-        open_price = market_data["open"]
-        high = market_data["high"]
-        low = market_data["low"]
-        close = market_data["close"]
-        volume = market_data["volume"]
+    def _extract_features(
+        self,
+        market_data
+    ):
 
-        body_size = abs(close - open_price)
+        open_price = float(
+            market_data.get(
+                "open",
+                0
+            )
+        )
 
-        upper_shadow = high - max(open_price, close)
+        high = float(
+            market_data.get(
+                "high",
+                0
+            )
+        )
 
-        lower_shadow = min(open_price, close) - low
+        low = float(
+            market_data.get(
+                "low",
+                0
+            )
+        )
 
-        price_range = high - low
+        close = float(
+            market_data.get(
+                "close",
+                0
+            )
+        )
 
+        volume = float(
+            market_data.get(
+                "volume",
+                0
+            )
+        )
+
+
+        # =========================
+        # Candle Structure
+        # =========================
+
+        body_size = abs(
+            close - open_price
+        )
+
+        upper_shadow = max(
+            0.0,
+            high - max(
+                open_price,
+                close
+            )
+        )
+
+        lower_shadow = max(
+            0.0,
+            min(
+                open_price,
+                close
+            ) - low
+        )
+
+        price_range = max(
+            0.0,
+            high - low
+        )
+
+
+        # =========================
+        # Trend Direction
+        # =========================
 
         if close > open_price:
+
             trend_direction = "UP"
+
         elif close < open_price:
+
             trend_direction = "DOWN"
+
         else:
+
             trend_direction = "NEUTRAL"
 
 
+        # =========================
+        # Price Position
+        # =========================
+
         if price_range > 0:
-            price_position = round(
-                (close - low) / price_range,
-                2
+
+            price_position = (
+                close - low
+            ) / price_range
+
+        else:
+
+            price_position = 0.5
+
+
+        price_position = max(
+            0.0,
+            min(
+                price_position,
+                1.0
             )
-        else:
-            price_position = 0
-
-
-        buying_pressure = price_position
-
-
-        if body_size > 0:
-            momentum = body_size
-        else:
-            momentum = 0
-
-
-        volatility = round(
-            price_range / close,
-            4
         )
 
 
-        if volume > 0:
-            volume_state = "HIGH"
+        # =========================
+        # Buying Pressure
+        # =========================
+
+        buying_pressure = (
+            price_position
+        )
+
+
+        # =========================
+        # Momentum
+        # =========================
+
+        momentum = (
+            close - open_price
+        )
+
+
+        # =========================
+        # Volatility
+        # =========================
+
+        if close != 0:
+
+            volatility = (
+                price_range /
+                abs(close)
+            )
+
         else:
+
+            volatility = 0.0
+
+
+        # =========================
+        # Volume State
+        # =========================
+
+        if volume > 0:
+
+            volume_state = "HIGH"
+
+        else:
+
             volume_state = "LOW"
 
 
-        if price_position >= 0.7:
+        # =========================
+        # Candle Type
+        # =========================
+
+        if close > open_price:
+
             candle_type = "BULLISH"
-        elif price_position <= 0.3:
+
+        elif close < open_price:
+
             candle_type = "BEARISH"
+
         else:
+
             candle_type = "NEUTRAL"
 
 
-        trend_strength = self._trend_strength(
-            close,
-            high,
-            low
+        # =========================
+        # Trend Strength
+        # =========================
+
+        trend_strength = (
+            self._trend_strength(
+                open_price,
+                close,
+                high,
+                low
+            )
         )
 
 
+        # =========================
+        # Feature Output
+        # =========================
+
         return {
 
-            "open": open_price,
-            "high": high,
-            "low": low,
-            "close": close,
+            "open": round(
+                open_price,
+                4
+            ),
 
-            "body_size": body_size,
-            "upper_shadow": upper_shadow,
-            "lower_shadow": lower_shadow,
+            "high": round(
+                high,
+                4
+            ),
 
-            "price_range": price_range,
+            "low": round(
+                low,
+                4
+            ),
 
-            "trend_direction": trend_direction,
+            "close": round(
+                close,
+                4
+            ),
 
-            "trend_strength": trend_strength,
+            "body_size": round(
+                body_size,
+                4
+            ),
 
-            "volume_state": volume_state,
+            "upper_shadow": round(
+                upper_shadow,
+                4
+            ),
 
-            "momentum": momentum,
+            "lower_shadow": round(
+                lower_shadow,
+                4
+            ),
 
-            "volatility": volatility,
+            "price_range": round(
+                price_range,
+                4
+            ),
 
-            "price_position": price_position,
+            "trend_direction":
+                trend_direction,
 
-            "candle_type": candle_type,
+            "trend_strength": round(
+                trend_strength,
+                4
+            ),
 
-            "buying_pressure": buying_pressure
+            "volume_state":
+                volume_state,
+
+            "momentum": round(
+                momentum,
+                4
+            ),
+
+            "volatility": round(
+                volatility,
+                6
+            ),
+
+            "price_position": round(
+                price_position,
+                4
+            ),
+
+            "candle_type":
+                candle_type,
+
+            "buying_pressure": round(
+                buying_pressure,
+                4
+            )
         }
 
 
+    # =========================
+    # Trend Strength
+    # =========================
 
     def _trend_strength(
         self,
+        open_price,
         close,
         high,
         low
     ):
 
-        price_range = high - low
+        price_range = (
+            high - low
+        )
 
-        if price_range == 0:
-            return 0
+        if price_range <= 0:
+
+            return 0.0
 
 
-        strength = abs(
-            close - ((high + low) / 2)
+        body_size = abs(
+            close - open_price
         )
 
 
-        return round(strength,2)
+        # Candle body relative to
+        # total candle range.
+        #
+        # Output:
+        # 0 = no directional strength
+        # 10 = maximum strength
+
+        strength = (
+            body_size /
+            price_range
+        ) * 10.0
 
 
-
-    def _make_decision(self, features):
-
-        score = 0
-
-
-        # Trend
-        if features["trend_direction"] == "UP":
-            score += 2
-
-        elif features["trend_direction"] == "DOWN":
-            score -= 2
-
-
-
-        # Trend strength
-        if features["trend_strength"] >= 5:
-            score += 2
-
-
-
-        # Volume
-        if features["volume_state"] == "HIGH":
-            score += 2
-
-
-
-        # Momentum
-        if features["momentum"] > 0:
-            score += 2
-
-
-
-        # Candle
-        if features["candle_type"] == "BULLISH":
-            score += 1
-
-        elif features["candle_type"] == "BEARISH":
-            score -= 1
-
-
-
-        # Volatility risk
-        if features["volatility"] < 0.02:
-            score += 1
-
-
-
-        # Decision
-
-        if score >= 7:
-            action = "BUY"
-
-        elif score <= -3:
-            action = "SELL"
-
-        else:
-            action = "HOLD"
-
-
-
-        confidence = round(
-            min(abs(score) / 10, 1),
-            2
+        strength = max(
+            0.0,
+            min(
+                strength,
+                10.0
+            )
         )
 
 
-        return {
-
-            "action": action,
-
-            "score": score,
-
-            "confidence": confidence
-
-        }
+        return strength
