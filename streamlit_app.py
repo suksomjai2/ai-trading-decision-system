@@ -67,13 +67,16 @@ market_state = market_engine.analyze(
 )
 
 
+# =========================
 # Convert Market State
+# =========================
 
 if isinstance(market_state, dict):
 
-    state_value = market_state.get(
-        "state",
-        "UNKNOWN"
+    state_value = (
+        market_state.get("state")
+        or market_state.get("market_state")
+        or "UNKNOWN"
     )
 
 else:
@@ -92,8 +95,15 @@ decision = decision_engine.decide(
 )
 
 
+
+# =========================
 # DEBUG
+# =========================
+
 st.write("===== DEBUG =====")
+
+st.write("RAW MARKET STATE:")
+st.write(market_state)
 
 st.write("STATE VALUE:")
 st.write(state_value)
@@ -127,6 +137,8 @@ col1, col2, col3 = st.columns(3)
 
 
 
+# Market State
+
 with col1:
 
     st.metric(
@@ -135,6 +147,8 @@ with col1:
     )
 
 
+
+# Decision
 
 with col2:
 
@@ -157,6 +171,8 @@ with col2:
 
 
 
+# Risk
+
 with col3:
 
     if isinstance(risk, dict):
@@ -165,7 +181,10 @@ with col3:
             "Risk Level",
             risk.get(
                 "risk_level",
-                "UNKNOWN"
+                risk.get(
+                    "level",
+                    "UNKNOWN"
+                )
             )
         )
 
@@ -192,13 +211,11 @@ st.json(
 )
 
 
-
 st.write("### Decision Detail")
 
 st.json(
     decision
 )
-
 
 
 st.write("### Risk Detail")
