@@ -92,6 +92,21 @@ decision = decision_engine.decide(
 )
 
 
+# DEBUG
+st.write("===== DEBUG =====")
+
+st.write("STATE VALUE:")
+st.write(state_value)
+
+st.write("FEATURES:")
+st.write(features)
+
+st.write("DECISION:")
+st.write(decision)
+
+st.write("=================")
+
+
 
 # =========================
 # Risk Engine
