@@ -53,13 +53,20 @@ market_data = {
 # TEST MARKET STATE
 # =========================
 
+# =========================
+# Market State TEST
+# =========================
+
 market_state = MarketState().analyze(
     market_data
 )
 
-
 st.write("MARKET STATE TEST")
 st.write(market_state)
+
+st.write("STATE VALUE TEST")
+st.write(market_state["state"])
+
 
 
 
