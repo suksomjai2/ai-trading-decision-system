@@ -84,10 +84,7 @@ features = feature_engine.calculate_features(
 # Convert State
 # =========================
 
-state_value = market_state.get(
-    "state",
-    "UNKNOWN"
-)
+state_value = market_state["state"]
 
 
 
