@@ -65,7 +65,7 @@ features = feature_engine.calculate_features(
 market_state = market_engine.analyze(
     market_data
 )
-st.write("TEST MARKET ENGINE")
+st.write("DEBUG MARKET STATE")
 st.write(market_state)
 
 # =========================
