@@ -144,8 +144,10 @@ class MarketState:
 
         # ======================
         # Price Position
-        # 0.0 = range low
-        # 1.0 = range high
+        #
+        # 0.0 = Range Low
+        # 0.5 = Range Middle
+        # 1.0 = Range High
         # ======================
 
         if price_range > 0:
@@ -179,6 +181,9 @@ class MarketState:
 
         # ======================
         # Momentum
+        #
+        # Positive = Bullish
+        # Negative = Bearish
         # ======================
 
         if trend_direction == "UP":
@@ -196,6 +201,7 @@ class MarketState:
 
         # ======================
         # Volatility
+        # Normalized by Price
         # ======================
 
         if close != 0:
@@ -212,6 +218,10 @@ class MarketState:
 
         # ======================
         # Volume State
+        #
+        # Temporary logic
+        # Will improve later using
+        # relative / average volume
         # ======================
 
         if volume > 0:
@@ -242,6 +252,8 @@ class MarketState:
 
         # ======================
         # Trend Strength
+        #
+        # Normalized 0.0 - 1.0
         # ======================
 
         trend_strength = (
@@ -369,23 +381,39 @@ class MarketState:
 
 
         # ======================
-        # Strength 0 - 10
+        # Normalized Strength
+        #
+        # 0.0 = Weak
+        # 1.0 = Strong
+        #
+        # Example:
+        #
+        # body  = 10
+        # range = 20
+        #
+        # strength = 0.5
         # ======================
 
         strength = (
             body_size /
             price_range
-        ) * 10.0
+        )
 
 
         # ======================
-        # Bound 0 - 10
+        # Bound 0.0 - 1.0
         # ======================
 
-        return max(
+        strength = max(
             0.0,
             min(
                 strength,
-                10.0
+                1.0
             )
+        )
+
+
+        return round(
+            strength,
+            4
         )
