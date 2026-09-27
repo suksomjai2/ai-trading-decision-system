@@ -1,6 +1,5 @@
 class MarketState:
 
-
     def __init__(self):
         pass
 
@@ -11,78 +10,47 @@ class MarketState:
         close = market_data["close"]
         high = market_data["high"]
         low = market_data["low"]
-        volume = market_data.get("volume", 0)
 
 
-        # =========================
         # Trend Direction
-        # =========================
 
         if close > open_price:
-
-            market_state = "BULLISH"
-            trend_direction = "UP"
-
+            state = "BULLISH"
 
         elif close < open_price:
-
-            market_state = "BEARISH"
-            trend_direction = "DOWN"
-
+            state = "BEARISH"
 
         else:
-
-            market_state = "NEUTRAL"
-            trend_direction = "SIDEWAY"
+            state = "NEUTRAL"
 
 
-
-        # =========================
-        # Price Momentum
-        # =========================
+        # Momentum
 
         price_range = high - low
 
 
+        # Volume (ถ้ามี)
+        volume_state = "UNKNOWN"
 
-        # =========================
-        # Volume State
-        # =========================
+        if "volume" in market_data:
+            volume = market_data["volume"]
 
-        if volume > 1000000:
+            if volume > 100000:
+                volume_state = "HIGH"
+            else:
+                volume_state = "LOW"
 
-            volume_state = "HIGH"
-
-        elif volume > 500000:
-
-            volume_state = "MEDIUM"
-
-        else:
-
-            volume_state = "LOW"
-
-
-
-        # =========================
-        # Output
-        # =========================
 
         return {
 
-            # สำคัญ ต้องมี key นี้
-            "state": market_state,
+            "state": state,
 
-
-            # ใช้แสดงรายละเอียด
-            "market_state": market_state,
-
+            "market_state": state,
 
             "price_range": price_range,
 
-
-            "trend_direction": trend_direction,
-
+            "trend_direction":
+                "UP" if close > open_price else "DOWN",
 
             "volume_state": volume_state
-
         }
