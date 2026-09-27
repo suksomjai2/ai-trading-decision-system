@@ -5,88 +5,101 @@ class MarketState:
 
     def __init__(self):
 
+        # ======================
+        # Decision Engine
+        # ======================
+
         self.decision_engine = DecisionEngine()
 
 
-    # =========================
-    # Market Analysis
-    # =========================
+    def analyze(
+        self,
+        market_data
+    ):
 
-    def analyze(self, market_data):
+        # ======================
+        # Extract Features
+        # ======================
 
         features = self._extract_features(
             market_data
         )
+
+
+        # ======================
+        # Market State
+        # ======================
 
         state = features.get(
             "trend_direction",
             "NEUTRAL"
         )
 
+
+        # ======================
+        # Decision
+        # Single Source of Truth
+        # ======================
+
         decision = self.decision_engine.decide(
             state,
             features
         )
 
+
+        # ======================
+        # Final Result
+        # ======================
+
         return {
+
             "state": state,
+
             "features": features,
+
             "decision": decision
+
         }
 
-
-    # =========================
-    # Feature Extraction
-    # =========================
 
     def _extract_features(
         self,
         market_data
     ):
 
+        # ======================
+        # Input Data
+        # ======================
+
         open_price = float(
-            market_data.get(
-                "open",
-                0
-            )
+            market_data["open"]
         )
 
         high = float(
-            market_data.get(
-                "high",
-                0
-            )
+            market_data["high"]
         )
 
         low = float(
-            market_data.get(
-                "low",
-                0
-            )
+            market_data["low"]
         )
 
         close = float(
-            market_data.get(
-                "close",
-                0
-            )
+            market_data["close"]
         )
 
         volume = float(
-            market_data.get(
-                "volume",
-                0
-            )
+            market_data["volume"]
         )
 
 
-        # =========================
-        # Candle Structure
-        # =========================
+        # ======================
+        # Candle Geometry
+        # ======================
 
         body_size = abs(
             close - open_price
         )
+
 
         upper_shadow = max(
             0.0,
@@ -96,6 +109,7 @@ class MarketState:
             )
         )
 
+
         lower_shadow = max(
             0.0,
             min(
@@ -104,15 +118,16 @@ class MarketState:
             ) - low
         )
 
+
         price_range = max(
             0.0,
             high - low
         )
 
 
-        # =========================
+        # ======================
         # Trend Direction
-        # =========================
+        # ======================
 
         if close > open_price:
 
@@ -127,9 +142,11 @@ class MarketState:
             trend_direction = "NEUTRAL"
 
 
-        # =========================
+        # ======================
         # Price Position
-        # =========================
+        # 0.0 = range low
+        # 1.0 = range high
+        # ======================
 
         if price_range > 0:
 
@@ -151,27 +168,35 @@ class MarketState:
         )
 
 
-        # =========================
+        # ======================
         # Buying Pressure
-        # =========================
+        # ======================
 
         buying_pressure = (
             price_position
         )
 
 
-        # =========================
+        # ======================
         # Momentum
-        # =========================
+        # ======================
 
-        momentum = (
-            close - open_price
-        )
+        if trend_direction == "UP":
+
+            momentum = body_size
+
+        elif trend_direction == "DOWN":
+
+            momentum = -body_size
+
+        else:
+
+            momentum = 0.0
 
 
-        # =========================
+        # ======================
         # Volatility
-        # =========================
+        # ======================
 
         if close != 0:
 
@@ -185,9 +210,9 @@ class MarketState:
             volatility = 0.0
 
 
-        # =========================
+        # ======================
         # Volume State
-        # =========================
+        # ======================
 
         if volume > 0:
 
@@ -198,9 +223,9 @@ class MarketState:
             volume_state = "LOW"
 
 
-        # =========================
+        # ======================
         # Candle Type
-        # =========================
+        # ======================
 
         if close > open_price:
 
@@ -215,9 +240,9 @@ class MarketState:
             candle_type = "NEUTRAL"
 
 
-        # =========================
+        # ======================
         # Trend Strength
-        # =========================
+        # ======================
 
         trend_strength = (
             self._trend_strength(
@@ -229,9 +254,9 @@ class MarketState:
         )
 
 
-        # =========================
-        # Feature Output
-        # =========================
+        # ======================
+        # Final Features
+        # ======================
 
         return {
 
@@ -308,12 +333,9 @@ class MarketState:
                 buying_pressure,
                 4
             )
+
         }
 
-
-    # =========================
-    # Trend Strength
-    # =========================
 
     def _trend_strength(
         self,
@@ -323,26 +345,32 @@ class MarketState:
         low
     ):
 
+        # ======================
+        # Price Range
+        # ======================
+
         price_range = (
             high - low
         )
+
 
         if price_range <= 0:
 
             return 0.0
 
 
+        # ======================
+        # Candle Body
+        # ======================
+
         body_size = abs(
             close - open_price
         )
 
 
-        # Candle body relative to
-        # total candle range.
-        #
-        # Output:
-        # 0 = no directional strength
-        # 10 = maximum strength
+        # ======================
+        # Strength 0 - 10
+        # ======================
 
         strength = (
             body_size /
@@ -350,13 +378,14 @@ class MarketState:
         ) * 10.0
 
 
-        strength = max(
+        # ======================
+        # Bound 0 - 10
+        # ======================
+
+        return max(
             0.0,
             min(
                 strength,
                 10.0
             )
         )
-
-
-        return strength
