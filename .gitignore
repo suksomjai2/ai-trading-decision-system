@@ -162,3 +162,14 @@ cython_debug/
 #  and can be added to the global gitignore or merged into this file.  For a more nuclear
 #  option (not recommended) you can uncomment the following to ignore the entire idea folder.
 #.idea/
+# AI Trading runtime / backups
+core/*backup*
+core_backup_*/
+__pycache__/
+core/__pycache__/
+*.pyc
+
+# Editor temporary files
+*.swp
+*.swo
+*~

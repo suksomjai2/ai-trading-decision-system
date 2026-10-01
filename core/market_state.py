@@ -1,217 +1,301 @@
+from core.feature_engine import FeatureEngine
+from core.decision_engine import DecisionEngine
+from core.risk_engine import RiskEngine
+from core.feedback_engine import FeedbackEngine
+from core.performance_engine import PerformanceEngine
+from core.calibration_engine import CalibrationEngine
+from core.risk_analysis_engine import RiskAnalysisEngine
+from core.evaluation_engine import EvaluationEngine
+from core.market_regime_engine import MarketRegimeEngine
+from core.decision_filter import DecisionFilter
+from core.setup_intelligence import SetupIntelligence
+from core.setup_confidence import SetupConfidence
+from core.entry_decision import EntryDecision
+from core.target_engine import TargetEngine
+from core.exit_engine import ExitEngine
+from core.confidence_engine import ConfidenceEngine
+from core.decision_reason import DecisionReason
+from core.memory_engine import MemoryEngine
+from core.historical_engine import HistoricalEngine
+from core.context_engine import ContextEngine
+from core.feedback_engine import FeedbackEngine
+from core.performance_engine import PerformanceEngine
+from core.calibration_engine import CalibrationEngine
+from core.risk_analysis_engine import RiskAnalysisEngine
+from core.evaluation_engine import EvaluationEngine
+from core.market_regime_engine import MarketRegimeEngine
+from core.decision_filter import DecisionFilter
+from core.setup_intelligence import SetupIntelligence
+from core.setup_confidence import SetupConfidence
+from core.entry_decision import EntryDecision
+from core.target_engine import TargetEngine
+from core.exit_engine import ExitEngine
+
+
 class MarketState:
 
     def __init__(self):
-        pass
+        self.feature_engine = FeatureEngine()
+        self.decision_engine = DecisionEngine()
+        self.risk_engine = RiskEngine()
+        self.feedback_engine = FeedbackEngine()
+        self.performance_engine = PerformanceEngine()
+        self.calibration_engine = CalibrationEngine()
+        self.risk_analysis_engine = RiskAnalysisEngine()
+        self.evaluation_engine = EvaluationEngine()
+        self.market_regime_engine = MarketRegimeEngine()
+        self.decision_filter = DecisionFilter()
+        self.setup_engine = SetupIntelligence()
+        self.setup_confidence = SetupConfidence()
+        self.entry_engine = EntryDecision()
+        self.target_engine = TargetEngine()
+        self.exit_engine = ExitEngine()
+        self.confidence_engine = ConfidenceEngine()
+        self.reason_engine = DecisionReason()
+        self.memory_engine = MemoryEngine()
+        self.historical_engine = HistoricalEngine()
+        self.context_engine = ContextEngine()
+        self.feedback_engine = FeedbackEngine()
+        self.performance_engine = PerformanceEngine()
+        self.calibration_engine = CalibrationEngine()
+        self.risk_analysis_engine = RiskAnalysisEngine()
+        self.evaluation_engine = EvaluationEngine()
+        self.market_regime_engine = MarketRegimeEngine()
+        self.decision_filter = DecisionFilter()
+        self.setup_engine = SetupIntelligence()
+        self.setup_confidence = SetupConfidence()
+        self.entry_engine = EntryDecision()
+        self.target_engine = TargetEngine()
+        self.exit_engine = ExitEngine()
 
 
     def analyze(self, market_data):
 
-        features = self._extract_features(market_data)
+        features = self.feature_engine.calculate_features(
+            market_data
+        )
 
-        decision = self._make_decision(features)
+        decision = self.decision_engine.evaluate(
+            features
+        )
 
-        return {
+        risk = self.risk_engine.evaluate(
+            decision,
+            features
+        )
+
+        confidence = self.confidence_engine.evaluate(
+            decision,
+            features
+        )
+
+        reason = self.reason_engine.generate(
+            decision,
+            confidence,
+            risk
+        )
+
+        result = {
             "features": features,
-            "decision": decision
+            "decision": decision,
+            "risk": risk,
+            "confidence": confidence,
+            "reason": reason
         }
 
-
-    def _extract_features(self, market_data):
-
-        open_price = market_data["open"]
-        high = market_data["high"]
-        low = market_data["low"]
-        close = market_data["close"]
-        volume = market_data["volume"]
-
-        body_size = abs(close - open_price)
-
-        upper_shadow = high - max(open_price, close)
-
-        lower_shadow = min(open_price, close) - low
-
-        price_range = high - low
-
-
-        if close > open_price:
-            trend_direction = "UP"
-        elif close < open_price:
-            trend_direction = "DOWN"
-        else:
-            trend_direction = "NEUTRAL"
-
-
-        if price_range > 0:
-            price_position = round(
-                (close - low) / price_range,
-                2
-            )
-        else:
-            price_position = 0
-
-
-        buying_pressure = price_position
-
-
-        if body_size > 0:
-            momentum = body_size
-        else:
-            momentum = 0
-
-
-        volatility = round(
-            price_range / close,
-            4
+        self.memory_engine.store(
+            result
         )
 
-
-        if volume > 0:
-            volume_state = "HIGH"
-        else:
-            volume_state = "LOW"
-
-
-        if price_position >= 0.7:
-            candle_type = "BULLISH"
-        elif price_position <= 0.3:
-            candle_type = "BEARISH"
-        else:
-            candle_type = "NEUTRAL"
-
-
-        trend_strength = self._trend_strength(
-            close,
-            high,
-            low
+        history = self.historical_engine.analyze(
+            self.memory_engine.get_history()
         )
 
+        context = self.context_engine.analyze(
+            features,
+            history
+        )
+
+        result["history"] = history
+        result["context"] = context
+
+        return result
+
+
+    def learn_from_result(self, decision, outcome):
+        """
+        Update adaptive weight from real market outcome.
+        """
+        self.feedback_engine.record(
+            decision,
+            outcome
+        )
 
         return {
-
-            "open": open_price,
-            "high": high,
-            "low": low,
-            "close": close,
-
-            "body_size": body_size,
-            "upper_shadow": upper_shadow,
-            "lower_shadow": lower_shadow,
-
-            "price_range": price_range,
-
-            "trend_direction": trend_direction,
-
-            "trend_strength": trend_strength,
-
-            "volume_state": volume_state,
-
-            "momentum": momentum,
-
-            "volatility": volatility,
-
-            "price_position": price_position,
-
-            "candle_type": candle_type,
-
-            "buying_pressure": buying_pressure
+            "accuracy": self.feedback_engine.accuracy(),
+            "weights": self.feedback_engine.get_weights()
         }
 
 
-
-    def _trend_strength(
-        self,
-        close,
-        high,
-        low
-    ):
-
-        price_range = high - low
-
-        if price_range == 0:
-            return 0
-
-
-        strength = abs(
-            close - ((high + low) / 2)
-        )
-
-
-        return round(strength,2)
-
-
-
-    def _make_decision(self, features):
-
-        score = 0
-
-
-        # Trend
-        if features["trend_direction"] == "UP":
-            score += 2
-
-        elif features["trend_direction"] == "DOWN":
-            score -= 2
-
-
-
-        # Trend strength
-        if features["trend_strength"] >= 5:
-            score += 2
-
-
-
-        # Volume
-        if features["volume_state"] == "HIGH":
-            score += 2
-
-
-
-        # Momentum
-        if features["momentum"] > 0:
-            score += 2
-
-
-
-        # Candle
-        if features["candle_type"] == "BULLISH":
-            score += 1
-
-        elif features["candle_type"] == "BEARISH":
-            score -= 1
-
-
-
-        # Volatility risk
-        if features["volatility"] < 0.02:
-            score += 1
-
-
-
-        # Decision
-
-        if score >= 7:
-            action = "BUY"
-
-        elif score <= -3:
-            action = "SELL"
-
-        else:
-            action = "HOLD"
-
-
-
-        confidence = round(
-            min(abs(score) / 10, 1),
-            2
-        )
-
+    def memory_status(self):
 
         return {
-
-            "action": action,
-
-            "score": score,
-
-            "confidence": confidence
-
+            "feedback_count": len(
+                self.feedback_engine.history()
+            ),
+            "accuracy": self.feedback_engine.accuracy(),
+            "weights": self.feedback_engine.get_weights()
         }
+
+
+    def performance_status(self):
+
+        return self.performance_engine.evaluate(
+            self.feedback_engine.history()
+        )
+
+
+    def calibration_status(self):
+
+        return self.calibration_engine.evaluate(
+            self.feedback_engine.history()
+        )
+
+
+    def risk_analysis_status(self):
+
+        return self.risk_analysis_engine.evaluate(
+            self.feedback_engine.history()
+        )
+
+
+    def evaluation_status(self):
+
+        return self.evaluation_engine.evaluate(
+            self
+        )
+
+
+    def regime_status(self, features):
+
+        return self.market_regime_engine.evaluate(
+            features
+        )
+
+
+    def filtered_decision(self, decision, features):
+
+        regime = self.market_regime_engine.evaluate(
+            features
+        )
+
+        return self.decision_filter.evaluate(
+            decision,
+            regime
+        )
+
+
+    def setup_status(self, features):
+
+        regime = self.market_regime_engine.evaluate(
+            features
+        )
+
+        return self.setup_engine.evaluate(
+            features,
+            regime
+        )
+
+
+    def setup_confidence_status(self, features):
+
+        setup = self.setup_status(
+            features
+        )
+
+        return self.setup_confidence.evaluate(
+            setup
+        )
+
+
+    def entry_status(self, features):
+
+        setup = self.setup_status(
+            features
+        )
+
+        confidence = self.setup_confidence.evaluate(
+            setup
+        )
+
+        return self.entry_engine.evaluate(
+            setup,
+            confidence
+        )
+
+
+    def target_status(self, price, features, action):
+
+        return self.target_engine.evaluate(
+            price,
+            features,
+            action
+        )
+
+
+    def exit_status(self, price, target):
+
+        return self.exit_engine.evaluate(
+            price,
+            target
+        )
+
+
+    def trading_decision(self, price, features):
+
+        # 1. Entry analysis
+        entry = self.entry_status(features)
+
+        action = entry.get(
+            "action",
+            "WAIT"
+        )
+
+        # 2. No trade
+        if action == "WAIT":
+            return {
+                "decision": "WAIT",
+                "entry": entry,
+                "target": None
+            }
+
+        # 3. Generate target / invalidation
+        target = self.target_status(
+            price,
+            features,
+            action
+        )
+
+        return {
+            "decision": action,
+            "entry": entry,
+            "target": target
+        }
+
+
+    def monitor_position(self, current_price, trade):
+
+        target = trade.get(
+            "target"
+        )
+
+        if not target:
+            return {
+                "status": "NO_POSITION",
+                "current_price": current_price
+            }
+
+        return self.exit_status(
+            current_price,
+            target
+        )
