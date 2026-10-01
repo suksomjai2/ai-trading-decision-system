@@ -120,7 +120,7 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
 
-def run(host="127.0.0.1", port=8000):
+def run(host="0.0.0.0", port=8000):
 
     server = HTTPServer(
         (host, port),

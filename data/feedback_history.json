@@ -1,0 +1,42 @@
+[
+  {
+    "decision": "BUY",
+    "outcome": "BUY",
+    "result": "GOOD"
+  },
+  {
+    "decision": "BUY",
+    "outcome": "BUY",
+    "result": "GOOD"
+  },
+  {
+    "decision": "BUY",
+    "outcome": "BUY",
+    "result": "GOOD"
+  },
+  {
+    "decision": "SELL",
+    "outcome": "BUY",
+    "result": "BAD"
+  },
+  {
+    "decision": "BUY",
+    "outcome": "BUY",
+    "result": "GOOD"
+  },
+  {
+    "decision": "SELL",
+    "outcome": "BUY",
+    "result": "BAD"
+  },
+  {
+    "decision": "BUY",
+    "outcome": "BUY",
+    "result": "GOOD"
+  },
+  {
+    "decision": "SELL",
+    "outcome": "BUY",
+    "result": "BAD"
+  }
+]
