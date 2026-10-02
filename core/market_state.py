@@ -69,6 +69,37 @@ class MarketState:
         self.exit_engine = ExitEngine()
 
 
+    def analyze_history(self, candles):
+        if not candles:
+            return {
+                "context": "NEUTRAL",
+                "risk": {}
+            }
+
+        first_close = candles[0]["close"]
+        last_close = candles[-1]["close"]
+
+        if last_close > first_close:
+            context = "ALIGNED"
+        elif last_close < first_close:
+            context = "ALIGNED"
+        else:
+            context = "NEUTRAL"
+
+        ranges = [
+            candle["high"] - candle["low"]
+            for candle in candles
+        ]
+
+        average_range = sum(ranges) / len(ranges)
+
+        return {
+            "context": context,
+            "risk": {
+                "average_range": average_range
+            }
+        }
+
     def analyze(self, market_data):
 
         features = self.feature_engine.calculate_features(

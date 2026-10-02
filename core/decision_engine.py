@@ -34,3 +34,29 @@ class DecisionEngine:
             "score": round(score, 2),
             "reasons": reasons
         }
+
+    def decide(self, context, features):
+        result = self.evaluate(features)
+
+        score = features.get("score", result.get("score", 0))
+
+        confidence = 0.5 + min(abs(score) * 0.1, 0.3)
+        confidence = max(0.0, min(1.0, confidence))
+
+        result["context"] = context
+        result["confidence"] = round(confidence, 2)
+
+        return result
+
+    def decide(self, context, features):
+        result = self.evaluate(features)
+
+        score = features.get("score", result.get("score", 0))
+
+        confidence = 0.5 + min(abs(score) * 0.1, 0.3)
+        confidence = max(0.0, min(1.0, confidence))
+
+        result["context"] = context
+        result["confidence"] = round(confidence, 2)
+
+        return result
