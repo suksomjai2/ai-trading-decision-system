@@ -130,7 +130,22 @@ def dashboard():
         st.write("**Lifecycle:**", decision.get("state", "WAIT"))
         st.write("**Reason:**", decision.get("reason", "N/A"))
         st.write("**H4 direction:**", decision.get("direction", "NEUTRAL"))
-        st.write("**H1 setup direction:**", decision.get("setup_direction") or "NONE")
+        st.write("**H1 context:**", (decision.get("timeframes", {}).get("H1") or {}).get("direction", "N/A"))
+        st.write("**Candidate setup direction:**", decision.get("setup_direction") or "NONE")
+        st.write("**Setup mode:**", decision.get("setup_mode", "N/A"))
+        diagnostics = decision.get("diagnostics")
+        if diagnostics:
+            st.caption("H4/H1 provide context. A M15 candidate still needs a pullback, "
+                       "closed M5 confirmation, a live trigger and acceptable risk/reward.")
+            rows = []
+            for tf in ("H4", "H1", "M15", "M5"):
+                f = (decision.get("timeframes") or {}).get(tf) or {}
+                rows.append({"Timeframe": tf, "Direction": f.get("direction"),
+                             "Structure": f.get("structure"), "Close": f.get("last_close"),
+                             "EMA20": f.get("ema20"), "EMA50": f.get("ema50")})
+            st.dataframe(rows, hide_index=True)
+            with st.expander("Entry checks and blocking values"):
+                st.json(diagnostics)
         trade = decision.get("paper_trade") or {}
         st.write("**Paper position:**", trade.get("side", "NONE"))
         if trade:
