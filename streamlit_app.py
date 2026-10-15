@@ -12,7 +12,7 @@ st.set_page_config(
 )
 
 st.title("AI Trading Decision System")
-st.subheader("XAUUSD · M15")
+st.subheader("XAUUSD · H4 / H1 / M15 / M5")
 st.caption(
     "READ_ONLY | Market data: MT5 | Analysis: Python on VPS"
 )
@@ -104,9 +104,10 @@ def dashboard():
 
     st.success("Connected to Supabase — saved MT5 data loaded")
 
-    if age > 20 * 60:
+    hybrid = decision.get("execution_mode") == "PAPER_ONLY"
+    if age > (120 if hybrid else 20 * 60):
         st.warning(
-            "No newly received snapshot for over 20 minutes. "
+            "Data feed is stale. "
             "The values below are the last saved data."
         )
     elif age < -60:
@@ -118,22 +119,40 @@ def dashboard():
         received.astimezone(bangkok).strftime("%Y-%m-%d %H:%M:%S"),
     )
     st.write(
-        "**Candle timestamp (broker time):**",
+        "**Candle timestamp (UTC for upgraded feed):**",
         market.get("timestamp", "N/A"),
     )
-    st.caption(
-        "Closed M15 candle data. Page checks for updates every "
-        "15 seconds while open; these are not live tick prices."
-    )
+    st.caption("Page refreshes every 15 seconds. VPS evaluates incoming quotes independently; "
+               "the dashboard is a sampled view, not a trading terminal.")
+    if hybrid:
+        st.info("PAPER ONLY — entries and outcomes below are simulated. "
+                "Actual MT5 positions are not connected; no orders are sent.")
+        st.write("**Lifecycle:**", decision.get("state", "WAIT"))
+        st.write("**Reason:**", decision.get("reason", "N/A"))
+        st.write("**H4 direction:**", decision.get("direction", "NEUTRAL"))
+        st.write("**H1 setup direction:**", decision.get("setup_direction") or "NONE")
+        trade = decision.get("paper_trade") or {}
+        st.write("**Paper position:**", trade.get("side", "NONE"))
+        if trade:
+            st.write("**Paper entry price:**", price(trade.get("entry_price")))
+            st.write("**MFE observed (price units):**", price(trade.get("mfe_observed")))
+            st.caption("Observed MFE can miss movement between quotes. Historical SELL exits "
+                       "cannot be reconstructed exactly without ask-price history.")
+        quote = snapshot.get("quote") or {}
+        if quote:
+            quote_age = datetime.now(timezone.utc).timestamp() - quote["time"]
+            st.write("**Last sampled bid / ask:**", price(quote.get("bid")), "/", price(quote.get("ask")))
+            if quote_age > 120:
+                st.warning("Live quote is stale. Do not interpret this snapshot as a current entry.")
 
     col1, col2, col3 = st.columns(3)
     col1.metric("Candle close", price(market.get("close")))
-    col2.metric("Decision", decision.get("decision", "N/A"))
-    col3.metric("Setup quality", entry.get("quality", "N/A"))
+    col2.metric("New entry / lifecycle action", decision.get("decision", "N/A"))
+    col3.metric("Quality (not a win probability)", entry.get("quality", "N/A"))
 
     col4, col5 = st.columns(2)
-    col4.metric("Target price", price(target.get("target_price")))
-    col5.metric("Invalidation price", price(target.get("invalid_price")))
+    col4.metric("Paper target price" if hybrid else "Target price", price(target.get("target_price")))
+    col5.metric("Paper invalidation price" if hybrid else "Invalidation price", price(target.get("invalid_price")))
 
     st.divider()
     st.subheader("MT5 candle")
