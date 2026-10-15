@@ -94,6 +94,7 @@ def save_snapshot(payload, result):
 
 
 class Handler(BaseHTTPRequestHandler):
+    protocol_version = "HTTP/1.1"
 
     def do_GET(self):
 
@@ -150,6 +151,8 @@ class Handler(BaseHTTPRequestHandler):
             "Content-Length",
             str(len(body))
         )
+        self.send_header("Connection", "close")
+        self.close_connection = True
         self.end_headers()
 
         self.wfile.write(body)
