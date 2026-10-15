@@ -64,6 +64,28 @@ def analyze(payload):
     }
 
 
+
+def save_snapshot(payload, result):
+    from pathlib import Path
+    from datetime import datetime, timezone
+    import os
+
+    folder = Path(__file__).resolve().parents[1] / "runtime"
+    folder.mkdir(exist_ok=True)
+    snapshot = {
+        "received_at_utc": datetime.now(timezone.utc).isoformat(),
+        "mode": "READ_ONLY",
+        "market": payload,
+        "analysis": result
+    }
+    temporary = folder / "latest.json.tmp"
+    temporary.write_text(
+        json.dumps(snapshot, ensure_ascii=False, allow_nan=False),
+        encoding="utf-8"
+    )
+    os.replace(temporary, folder / "latest.json")
+
+
 class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self):
@@ -90,6 +112,9 @@ class Handler(BaseHTTPRequestHandler):
             payload = json.loads(body)
 
             result = analyze(payload)
+
+            if result.get("status") == "PROCESSED":
+                save_snapshot(payload, result)
 
             self.send_json(200, result)
 
