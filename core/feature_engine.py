@@ -205,3 +205,42 @@ class FeatureEngine:
         else:
 
             return "NORMAL"
+
+    def calculate_history(self, candles):
+        """Closed bars only, in time order. EMA and Wilder ATR use history."""
+        if len(candles) < 60:
+            raise ValueError("INSUFFICIENT_HISTORY")
+        closes = [c["close"] for c in candles]
+
+        def ema(period):
+            value = sum(closes[:period]) / period
+            values = [value]
+            alpha = 2 / (period + 1)
+            for close in closes[period:]:
+                value += alpha * (close - value)
+                values.append(value)
+            return values
+
+        true_ranges = [max(c["high"] - c["low"],
+                           abs(c["high"] - candles[i - 1]["close"]),
+                           abs(c["low"] - candles[i - 1]["close"]))
+                       for i, c in enumerate(candles) if i]
+        atr = sum(true_ranges[:14]) / 14
+        for value in true_ranges[14:]:
+            atr = (13 * atr + value) / 14
+        fast, slow = ema(20), ema(50)
+        current, previous = candles[-5:], candles[-10:-5]
+        higher = (max(c["high"] for c in current) > max(c["high"] for c in previous)
+                  and min(c["low"] for c in current) > min(c["low"] for c in previous))
+        lower = (max(c["high"] for c in current) < max(c["high"] for c in previous)
+                 and min(c["low"] for c in current) < min(c["low"] for c in previous))
+        direction = "NEUTRAL"
+        if closes[-1] > fast[-1] > slow[-1] and fast[-1] > fast[-6] and higher:
+            direction = "UP"
+        elif closes[-1] < fast[-1] < slow[-1] and fast[-1] < fast[-6] and lower:
+            direction = "DOWN"
+        return {
+            "direction": direction, "ema20": fast[-1], "ema50": slow[-1],
+            "atr14": atr, "structure": "HIGHER" if higher else "LOWER" if lower else "MIXED",
+            "last_close": closes[-1], "last_time": candles[-1]["time"],
+        }

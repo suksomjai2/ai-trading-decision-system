@@ -1,265 +1,165 @@
+import json
+from datetime import datetime, timezone, timedelta
+from urllib.request import Request, urlopen
+from urllib.error import HTTPError, URLError
+
 import streamlit as st
-import subprocess
-import inspect
 
-from core.market_state import MarketState
-from core.feature_engine import FeatureEngine
-from core.decision_engine import DecisionEngine
-from core.risk_engine import RiskEngine
-
-
-# =========================
-# Page Config
-# =========================
 
 st.set_page_config(
     page_title="AI Trading Decision System",
-    layout="wide"
+    layout="wide",
+)
+
+st.title("AI Trading Decision System")
+st.subheader("XAUUSD · H4 / H1 / M15 / M5")
+st.caption(
+    "READ_ONLY | Market data: MT5 | Analysis: Python on VPS"
 )
 
 
-# =========================
-# Deployment Debug
-# =========================
+def fetch_latest():
+    url = str(st.secrets["SUPABASE_URL"]).rstrip("/")
+    key = str(st.secrets["SUPABASE_SECRET_KEY"]).strip()
 
-try:
-    commit_hash = subprocess.check_output(
-        ["git", "rev-parse", "HEAD"],
-        text=True
-    ).strip()
+    endpoint = (
+        url + "/rest/v1/market_latest"
+        "?symbol=eq.XAUUSD&timeframe=eq.M15&select=*"
+    )
+    request = Request(
+        endpoint,
+        headers={
+            "apikey": key,
+            "User-Agent": "AITrading-Streamlit/1.0",
+            "Accept": "application/json",
+        },
+    )
 
-except Exception:
-    commit_hash = "UNKNOWN"
+    with urlopen(request, timeout=10) as response:
+        rows = json.load(response)
 
+    if not isinstance(rows, list) or len(rows) != 1:
+        raise ValueError("Expected one XAUUSD M15 snapshot")
 
-# =========================
-# Title
-# =========================
+    row = rows[0]
+    snapshot = row["snapshot"]
 
-st.title("🧠 AI Trading Decision System")
-st.subheader("XAUUSD AI Analysis Dashboard")
+    if (
+        row["symbol"] != "XAUUSD"
+        or row["timeframe"] != "M15"
+        or snapshot["market"]["symbol"] != "XAUUSD"
+        or snapshot["market"]["timeframe"] != "M15"
+        or snapshot["analysis"]["status"] != "PROCESSED"
+        or snapshot["mode"] != "READ_ONLY"
+    ):
+        raise ValueError("Invalid snapshot")
 
-
-# =========================
-# Initialize Engines
-# =========================
-
-market_engine = MarketState()
-feature_engine = FeatureEngine()
-decision_engine = DecisionEngine()
-risk_engine = RiskEngine()
-
-
-# =========================
-# Market Data
-# =========================
-
-market_data = {
-    "open": 2650,
-    "high": 2665,
-    "low": 2645,
-    "close": 2660,
-    "volume": 1200000
-}
+    return row
 
 
-# =========================
-# Market Analysis
-# =========================
-
-market_result = market_engine.analyze(
-    market_data
-)
+def price(value):
+    if isinstance(value, (int, float)):
+        return f"{value:,.2f}"
+    return "N/A"
 
 
-# =========================
-# Extract Data
-# =========================
+@st.fragment(run_every=15)
+def dashboard():
+    st.button("Refresh now")
 
-features = market_result.get(
-    "features",
-    {}
-)
+    try:
+        row = fetch_latest()
+        snapshot = row["snapshot"]
+        market = snapshot["market"]
+        analysis = snapshot["analysis"]
+        decision = analysis.get("decision") or {}
+        entry = decision.get("entry") or {}
+        target = decision.get("target") or {}
 
-decision = market_result.get(
-    "decision",
-    {}
-)
-
-
-# =========================
-# Direct Decision Test
-# =========================
-# This checks DecisionEngine directly.
-# It lets us compare the result returned by
-# MarketState with the current DecisionEngine.
-
-state_value = features.get(
-    "trend_direction",
-    "UNKNOWN"
-)
-
-direct_decision = decision_engine.decide(
-    state_value,
-    features
-)
-
-
-# =========================
-# Risk
-# =========================
-
-risk = risk_engine.evaluate(
-    decision,
-    features
-)
-
-
-# =========================
-# Dashboard
-# =========================
-
-col1, col2, col3 = st.columns(3)
-
-
-with col1:
-
-    st.metric(
-        "Market Trend",
-        features.get(
-            "trend_direction",
-            "UNKNOWN"
+        received = datetime.fromisoformat(
+            row["received_at_utc"].replace("Z", "+00:00")
         )
-    )
+        if received.tzinfo is None:
+            raise ValueError("Missing receive-time timezone")
 
+        age = (
+            datetime.now(timezone.utc) - received
+        ).total_seconds()
 
-with col2:
+    except HTTPError as error:
+        st.error(f"Database connection failed: HTTP {error.code}")
+        return
+    except (URLError, TimeoutError, OSError):
+        st.error("Cannot reach database. Please refresh later.")
+        return
+    except KeyError:
+        st.error("Missing app Secrets or required snapshot fields.")
+        return
+    except (ValueError, TypeError, AttributeError):
+        st.error("Database response has an unexpected format.")
+        return
+    except Exception:
+        st.error("Unable to load data. Check the app configuration.")
+        return
 
-    st.metric(
-        "Decision",
-        decision.get(
-            "action",
-            "HOLD"
+    st.success("Connected to Supabase — saved MT5 data loaded")
+
+    hybrid = decision.get("execution_mode") == "PAPER_ONLY"
+    if age > (120 if hybrid else 20 * 60):
+        st.warning(
+            "Data feed is stale. "
+            "The values below are the last saved data."
         )
+    elif age < -60:
+        st.warning("Receive time is ahead of the app clock.")
+
+    bangkok = timezone(timedelta(hours=7))
+    st.write(
+        "**Last received (Thailand):**",
+        received.astimezone(bangkok).strftime("%Y-%m-%d %H:%M:%S"),
     )
-
-
-with col3:
-
-    confidence = decision.get(
-        "confidence",
-        0
+    st.write(
+        "**Candle timestamp (UTC for upgraded feed):**",
+        market.get("timestamp", "N/A"),
     )
+    st.caption("Page refreshes every 15 seconds. VPS evaluates incoming quotes independently; "
+               "the dashboard is a sampled view, not a trading terminal.")
+    if hybrid:
+        st.info("PAPER ONLY — entries and outcomes below are simulated. "
+                "Actual MT5 positions are not connected; no orders are sent.")
+        st.write("**Lifecycle:**", decision.get("state", "WAIT"))
+        st.write("**Reason:**", decision.get("reason", "N/A"))
+        st.write("**H4 direction:**", decision.get("direction", "NEUTRAL"))
+        st.write("**H1 setup direction:**", decision.get("setup_direction") or "NONE")
+        trade = decision.get("paper_trade") or {}
+        st.write("**Paper position:**", trade.get("side", "NONE"))
+        if trade:
+            st.write("**Paper entry price:**", price(trade.get("entry_price")))
+            st.write("**MFE observed (price units):**", price(trade.get("mfe_observed")))
+            st.caption("Observed MFE can miss movement between quotes. Historical SELL exits "
+                       "cannot be reconstructed exactly without ask-price history.")
+        quote = snapshot.get("quote") or {}
+        if quote:
+            quote_age = datetime.now(timezone.utc).timestamp() - quote["time"]
+            st.write("**Last sampled bid / ask:**", price(quote.get("bid")), "/", price(quote.get("ask")))
+            if quote_age > 120:
+                st.warning("Live quote is stale. Do not interpret this snapshot as a current entry.")
 
-    st.metric(
-        "Confidence",
-        f"{confidence:.3f}"
-        if isinstance(
-            confidence,
-            (int, float)
-        )
-        else confidence
-    )
+    col1, col2, col3 = st.columns(3)
+    col1.metric("Candle close", price(market.get("close")))
+    col2.metric("New entry / lifecycle action", decision.get("decision", "N/A"))
+    col3.metric("Quality (not a win probability)", entry.get("quality", "N/A"))
 
+    col4, col5 = st.columns(2)
+    col4.metric("Paper target price" if hybrid else "Target price", price(target.get("target_price")))
+    col5.metric("Paper invalidation price" if hybrid else "Invalidation price", price(target.get("invalid_price")))
 
-# =========================
-# Details
-# =========================
+    st.divider()
+    st.subheader("MT5 candle")
+    st.json(market)
 
-st.divider()
-
-
-st.write("### Market Features")
-
-st.json(
-    features
-)
-
-
-st.write("### Decision Detail")
-
-st.json(
-    decision
-)
-
-
-st.write("### Risk Detail")
-
-st.json(
-    risk
-)
-
-
-# =========================
-# Debug Information
-# =========================
-
-st.divider()
-
-st.write("## 🔧 Debug Information")
+    st.subheader("Analysis from VPS")
+    st.json(decision)
 
 
-st.write("### Deployed Commit")
-
-st.code(
-    commit_hash
-)
-
-
-st.write("### DecisionEngine File")
-
-st.code(
-    inspect.getfile(
-        DecisionEngine
-    )
-)
-
-
-st.write("### Decision From MarketState")
-
-st.json(
-    decision
-)
-
-
-st.write("### Direct DecisionEngine Result")
-
-st.json(
-    direct_decision
-)
-
-
-st.write("### Confidence Comparison")
-
-comparison = {
-    "market_state_confidence": decision.get(
-        "confidence"
-    ),
-    "direct_engine_confidence": direct_decision.get(
-        "confidence"
-    )
-}
-
-st.json(
-    comparison
-)
-
-
-st.write("### DecisionEngine Source")
-
-try:
-
-    source = inspect.getsource(
-        DecisionEngine.decide
-    )
-
-    st.code(
-        source,
-        language="python"
-    )
-
-except Exception as error:
-
-    st.error(
-        f"Unable to read DecisionEngine source: {error}"
-    )
+dashboard()

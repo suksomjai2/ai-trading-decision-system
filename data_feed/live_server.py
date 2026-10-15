@@ -1,4 +1,5 @@
 import json
+from pathlib import Path
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
 from data_feed.mt5_bridge import MT5Bridge
@@ -7,61 +8,50 @@ from core.feature_engine import FeatureEngine
 from core.market_state import MarketState
 
 
+RUNTIME = Path(__file__).resolve().parents[1] / "runtime"
+
 bridge = MT5Bridge()
 feature_engine = FeatureEngine()
 market_state = MarketState()
 
 
+_store = None
+
+
 def analyze(payload):
-
-    # 1. Parse MT5 payload
-    parsed = bridge.parse(payload)
-
-    if not parsed["accepted"]:
-        return {
-            "status": "REJECTED",
-            "reason": parsed["reason"],
-            "decision": None
-        }
-
-    mt5 = parsed["data"]
-
-    # 2. Normalize + validate
-    pipeline = MarketDataPipeline(mt5["symbol"])
-
-    market = pipeline.process(
-        timestamp=mt5["timestamp"],
-        open_price=mt5["open"],
-        high=mt5["high"],
-        low=mt5["low"],
-        close=mt5["close"],
-        volume=mt5["volume"]
-    )
-
-    if not market["accepted"]:
-        return {
-            "status": "REJECTED",
-            "reason": market["reason"],
-            "decision": None
-        }
-
-    # 3. Features
-    candle = market["candle"]
-    features = feature_engine.calculate_features(candle)
-
-    # 4. AI decision
-    decision = market_state.trading_decision(
-        candle["close"],
-        features
-    )
-
-    return {
-        "status": "PROCESSED",
-        "symbol": mt5["symbol"],
-        "timeframe": mt5["timeframe"],
-        "timestamp": mt5["timestamp"],
-        "decision": decision
-    }
+    from datetime import datetime, timezone
+    from pathlib import Path
+    from data_feed.hybrid_feed import validate
+    from data_feed.state_store import StateStore
+    global _store
+    if not isinstance(payload, dict):
+        return {"status": "REJECTED", "reason": "INVALID_PAYLOAD", "decision": None}
+    if payload.get("schema_version") != 2:
+        parsed = bridge.parse(payload)
+        if not parsed["accepted"]:
+            return {"status": "REJECTED", "reason": parsed["reason"], "decision": None}
+        mt5 = parsed["data"]
+        market = MarketDataPipeline(mt5["symbol"]).process(
+            timestamp=mt5["timestamp"], open_price=mt5["open"], high=mt5["high"],
+            low=mt5["low"], close=mt5["close"], volume=mt5["volume"])
+        if not market["accepted"]:
+            return {"status": "REJECTED", "reason": market["reason"], "decision": None}
+        # Old sender remains connected, but cannot bypass the new data requirements.
+        return {"status": "PROCESSED", "symbol": mt5["symbol"], "timeframe": mt5["timeframe"],
+                "timestamp": mt5["timestamp"],
+                "decision": {"decision": "WAIT", "state": "WAIT", "target": None,
+                             "reason": "REQUIRES_MULTI_TIMEFRAME_AND_LIVE_FEED",
+                             "execution_mode": "PAPER_ONLY", "entry": {"quality": "NOT_CALIBRATED"}}}
+    try:
+        validate(payload)
+    except (ValueError, KeyError, TypeError) as exc:
+        return {"status": "REJECTED", "reason": str(exc), "decision": None}
+    if _store is None:
+        _store = StateStore(RUNTIME / "engine.sqlite3")
+    decision = _store.process(payload["symbol"], lambda state: market_state.process_hybrid(state, payload))
+    stamp = datetime.fromtimestamp(payload["candles"]["M15"][-1]["time"], timezone.utc).isoformat()
+    return {"status": "PROCESSED", "symbol": payload["symbol"], "timeframe": "M15",
+            "timestamp": stamp, "decision": decision}
 
 
 
@@ -70,14 +60,31 @@ def save_snapshot(payload, result):
     from datetime import datetime, timezone
     import os
 
-    folder = Path(__file__).resolve().parents[1] / "runtime"
+    folder = RUNTIME
     folder.mkdir(exist_ok=True)
+    if payload.get("schema_version") == 2:
+        from datetime import datetime, timezone
+        market = dict(payload["candles"]["M15"][-1])
+        market["timestamp"] = datetime.fromtimestamp(market.pop("time"), timezone.utc).isoformat()
+        market.update(symbol=payload["symbol"], timeframe="M15")
+    else:
+        market = payload
     snapshot = {
         "received_at_utc": datetime.now(timezone.utc).isoformat(),
         "mode": "READ_ONLY",
-        "market": payload,
+        "market": market,
+        "quote": payload.get("quote"),
         "analysis": result
     }
+    latest = folder / "latest.json"
+    if latest.exists() and payload.get("schema_version") == 2:
+        previous = json.loads(latest.read_text(encoding="utf-8"))
+        age = (datetime.now(timezone.utc) - datetime.fromisoformat(previous["received_at_utc"])).total_seconds()
+        old = previous.get("analysis", {}).get("decision", {})
+        new = result["decision"]
+        if (age < 60 and old.get("state") == new.get("state")
+                and previous["market"]["timestamp"] == market["timestamp"]):
+            return
     temporary = folder / "latest.json.tmp"
     temporary.write_text(
         json.dumps(snapshot, ensure_ascii=False, allow_nan=False),
@@ -108,6 +115,9 @@ class Handler(BaseHTTPRequestHandler):
 
         try:
             length = int(self.headers.get("Content-Length", 0))
+            if not 0 < length <= 2_000_000:
+                self.send_json(413, {"status": "REJECTED", "reason": "PAYLOAD_SIZE"})
+                return
             body = self.rfile.read(length)
             payload = json.loads(body)
 

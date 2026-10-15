@@ -173,3 +173,8 @@ core/__pycache__/
 *.swp
 *.swo
 *~
+
+# Local runtime state; never publish prices or lifecycle databases
+/runtime/
+/logs/
+.verify-venv/
