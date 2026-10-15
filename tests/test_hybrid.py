@@ -146,7 +146,8 @@ def test_database_failure_rolls_back(tmp_path):
 def armed(payload, side="BUY", zone_seen=False):
     return dict(last_quote_time=payload["quote"]["time"]-5, last_mid=100,
                 setup=dict(id="armed-1", side=side, created=NOW-10, expires=NOW+3600,
-                           source_bar=payload["candles"]["H1"][-1]["time"], zone_low=98,
+                           source_bar=payload["candles"]["H1"][-1]["time"],
+                           source_m15=payload["candles"]["M15"][-1]["time"], zone_low=98,
                            zone_high=100, sl=95, zone_seen=zone_seen,
                            zone_seen_time=NOW-400, confirmation_after=NOW-1000,
                            late_chase_recorded=False))
@@ -287,24 +288,28 @@ def test_real_http_market_route(tmp_path, monkeypatch):
         thread.join(timeout=2)
 
 
-def test_new_closed_structure_replaces_zone_without_entering():
+def test_new_closed_structure_reassesses_without_discarding_setup():
     payload = feed()
     state = armed(payload)
     state["setup"]["source_m15"] = payload["candles"]["M15"][-1]["time"]-900
     state, output, events = MarketState().process_hybrid(state, payload)
     assert output["state"] == "ARMED"
     assert state["setup"]["source_m15"] == payload["candles"]["M15"][-1]["time"]
-    assert any(e["kind"] == "CANCEL" and e["reason"] == "CLOSED_STRUCTURE_REFRESH" for e in events)
+    assert any(e["kind"] == "SETUP_REASSESSED" for e in events)
+    assert state["setup"]["id"] == "armed-1"
+    assert not any(e["kind"] == "CANCEL" for e in events)
     assert not any(e["kind"] == "ENTRY" for e in events)
 
 
-def test_conflicting_h4_h1_is_no_trade():
+def test_conflicting_h4_h1_does_not_veto_m15_candidate():
     payload = feed()
     payload["candles"]["H1"] = feed(rising=False)["candles"]["H1"]
     _, output, events = MarketState().process_hybrid({}, payload)
-    assert output["reason"] == "NO_ALIGNED_H4_H1_SETUP"
+    assert output["state"] == "ARMED"
+    assert output["setup"]["side"] == "BUY"
+    assert output["setup_mode"] == "COUNTERTREND"
     assert output["decision"] == "WAIT"
-    assert not events
+    assert not any(e["kind"] == "ENTRY" for e in events)
 
 
 def test_expired_setup_cancels_and_audits():
@@ -314,3 +319,249 @@ def test_expired_setup_cancels_and_audits():
     _, output, events = MarketState().process_hybrid(state, payload)
     assert output["reason"] == "SETUP_EXPIRED"
     assert any(e["kind"] == "CANCEL" for e in events)
+
+
+def test_repeated_posts_close_connections_explicitly(tmp_path, monkeypatch):
+    import http.client
+    import threading
+    import time
+    from http.server import HTTPServer
+    from data_feed import live_server
+    monkeypatch.setattr(live_server, "RUNTIME", tmp_path)
+    monkeypatch.setattr(live_server, "_store", None)
+    server = HTTPServer(("127.0.0.1", 0), live_server.Handler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    connection = http.client.HTTPConnection("127.0.0.1", server.server_port, timeout=3)
+    try:
+        for _ in range(20):
+            body = json.dumps(feed(now=time.time())).encode()
+            connection.request("POST", "/market", body, {"Content-Type": "application/json", "Connection": "keep-alive"})
+            response = connection.getresponse()
+            assert response.version == 11
+            assert response.status == 200
+            assert response.getheader("Connection") == "close"
+            assert response.will_close
+            assert json.loads(response.read())["status"] == "PROCESSED"
+    finally:
+        connection.close()
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=2)
+
+
+def test_expect_continue_for_history_payload(tmp_path, monkeypatch):
+    import socket
+    import threading
+    import time
+    from http.server import HTTPServer
+    from data_feed import live_server
+    monkeypatch.setattr(live_server, "RUNTIME", tmp_path)
+    monkeypatch.setattr(live_server, "_store", None)
+    server = HTTPServer(("127.0.0.1", 0), live_server.Handler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        body = json.dumps(feed(now=time.time())).encode()
+        with socket.create_connection(("127.0.0.1", server.server_port), timeout=3) as connection:
+            headers = ("POST /market HTTP/1.1\r\nHost: localhost\r\n"
+                       "Expect: 100-continue\r\nContent-Type: application/json\r\n"
+                       f"Content-Length: {len(body)}\r\n\r\n").encode()
+            connection.sendall(headers)
+            stream = connection.makefile("rb")
+            assert stream.readline().startswith(b"HTTP/1.1 100 ")
+            assert stream.readline() == b"\r\n"
+            connection.sendall(body)
+            assert stream.readline().startswith(b"HTTP/1.1 200 ")
+            response_headers = {}
+            while True:
+                line = stream.readline()
+                if line == b"\r\n":
+                    break
+                key, value = line.decode().split(":", 1)
+                response_headers[key.lower()] = value.strip()
+            assert response_headers["connection"] == "close"
+            data = stream.read(int(response_headers["content-length"]))
+            assert json.loads(data)["status"] == "PROCESSED"
+            stream.close()
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=2)
+
+
+@pytest.mark.parametrize('side', ['BUY', 'SELL'])
+def test_countertrend_can_enter_with_m5_confirmation_and_live_price(side):
+    buy = side == 'BUY'
+    payload = feed(bid=100.3 if buy else 99.7, ask=100.4 if buy else 99.8, rising=buy)
+    opposite = feed(rising=not buy)
+    for tf in ('H4', 'H1'):
+        payload['candles'][tf] = opposite['candles'][tf]
+    payload['candles']['M5'][-1].update(
+        open=99 if buy else 101, high=100.2 if buy else 101.1,
+        low=98.9 if buy else 99.8, close=100.1 if buy else 99.9)
+    state = armed(payload, side=side, zone_seen=True)
+    state['setup'].update(sl=99 if buy else 101,
+                          zone_low=98 if buy else 100, zone_high=100 if buy else 102)
+    _, output, events = MarketState().process_hybrid(state, payload)
+    assert output['state'] == 'ENTRY'
+    assert output['decision'] == side
+    assert output['paper_trade']['mode'] == 'COUNTERTREND'
+    assert output['diagnostics']['higher_timeframe_veto'] is False
+    assert len([e for e in events if e['kind'] == 'ENTRY']) == 1
+
+
+def test_higher_timeframe_bearish_does_not_sell_into_m15_bullish_impulse():
+    payload = feed(bid=105, ask=105.1)
+    opposite = feed(rising=False)
+    for tf in ('H4', 'H1'):
+        payload['candles'][tf] = opposite['candles'][tf]
+    state, output, events = MarketState().process_hybrid({}, payload)
+    assert output['setup']['side'] == 'BUY'
+    assert output['decision'] == 'WAIT'
+    state, output, events = MarketState().process_hybrid(state, {**payload, 'quote': dict(time=NOW+5, bid=105, ask=105.1)})
+    assert output['reason'] == 'NO_PRICE_CHASING'
+    assert not any(e['kind'] == 'ENTRY' for e in events)
+
+
+def test_early_m15_breakout_does_not_require_ema50_crossover():
+    payload = feed(rising=False)
+    bar = payload['candles']['M15'][-1]
+    bar.update(open=100, high=105.5, low=99.8, close=105)
+    features = {tf: FeatureEngine().calculate_history(bars) for tf, bars in payload['candles'].items()}
+    assert features['M15']['direction'] == 'NEUTRAL'
+    side, mode, center, basis = MarketState.select_setup(features, payload['candles'])
+    assert side == 'BUY'
+    assert mode == 'COUNTERTREND'
+    assert center == features['M15']['recent_high']
+    assert basis == 'BROKEN_M15_LEVEL'
+
+
+def test_m15_refresh_preserves_observed_pullback_and_confirmation():
+    payload = feed(bid=100.3, ask=100.4)
+    payload['candles']['M5'][-1].update(open=99, high=100.2, low=98.9, close=100.1)
+    state = armed(payload, zone_seen=True)
+    state['setup'].update(sl=99, source_m15=payload['candles']['M15'][-1]['time']-900)
+    _, output, events = MarketState().process_hybrid(state, payload)
+    assert output['state'] == 'ENTRY'
+    assert output['paper_trade']['id'] == 'armed-1'
+    assert not any(e['kind'] == 'CANCEL' for e in events)
+
+
+def test_neutral_pullback_does_not_erase_existing_setup():
+    payload = feed()
+    for bar in payload['candles']['M15'][-10:]:
+        bar.update(open=99, high=100, low=98, close=99)
+    state = armed(payload)
+    _, output, events = MarketState().process_hybrid(state, payload)
+    assert output['state'] == 'ARMED'
+    assert output['diagnostics']['retained_pending_setup'] is True
+    assert not any(e['kind'] == 'CANCEL' for e in events)
+
+
+def test_cumulative_adverse_quotes_cancel_even_when_each_step_is_small():
+    engine = MarketState()
+    payload = feed(bid=99.4, ask=99.5)
+    state = armed(payload)
+    state['last_mid'] = 100.05
+    for i, bid in enumerate([99.4, 98.8, 98.2]):
+        payload = feed(now=NOW+i*5, bid=bid, ask=bid+.1)
+        state, output, events = engine.process_hybrid(state, payload)
+    assert output['state'] == 'CANCEL'
+    assert output['reason'] == 'IMPULSE_OVERRIDE'
+
+
+def test_wait_has_forward_quote_audit_and_blocking_reason(tmp_path):
+    store = StateStore(tmp_path / 'engine.sqlite3')
+    payload = feed()
+    for tf in ('H4', 'H1', 'M15', 'M5'):
+        for bar in payload['candles'][tf]:
+            bar.update(open=99, high=100, low=98, close=99)
+    output = store.process('XAUUSD', lambda s: MarketState().process_hybrid(s, payload))
+    assert output['reason'] == 'NO_M15_STRUCTURAL_SETUP'
+    with store.connect() as connection:
+        row = connection.execute("select value from events where kind='EVALUATION'").fetchone()
+    event = json.loads(row[0])
+    assert event['bid'] == payload['quote']['bid']
+    assert event['reason'] == output['reason']
+    assert output['timeframes']['H4']['direction_checks']
+
+
+def test_observed_pullback_stop_is_structural_and_frozen_after_entry():
+    engine = MarketState()
+    payload = feed(bid=100.3, ask=100.4)
+    payload['candles']['M5'][-1].update(open=99, high=100.2, low=98.9, close=100.1)
+    state = armed(payload, zone_seen=True)
+    state['setup']['pullback_extreme'] = 99
+    state, output, _ = engine.process_hybrid(state, payload)
+    assert output['state'] == 'ENTRY'
+    stop = output['paper_trade']['sl']
+    assert 95 < stop < 98.9
+    state, output, _ = engine.process_hybrid(state, feed(now=NOW+5, bid=101, ask=101.1))
+    assert output['paper_trade']['sl'] == stop
+
+
+def test_new_buy_zone_is_above_its_invalidation():
+    _, output, _ = MarketState().process_hybrid({}, feed())
+    setup = output['setup']
+    assert setup['sl'] < setup['zone_low'] < setup['zone_high']
+
+
+def test_countertrend_full_forward_lifecycle_without_injected_setup():
+    engine = MarketState()
+    payload = feed(bid=97.3, ask=97.4)
+    for tf in ('H4', 'H1'):
+        payload['candles'][tf] = feed(rising=False)['candles'][tf]
+    state, output, _ = engine.process_hybrid({}, payload)
+    assert output['state'] == 'ARMED'
+    assert output['setup_mode'] == 'COUNTERTREND'
+    payload['quote']['time'] += 5
+    state, output, _ = engine.process_hybrid(state, payload)
+    assert output['reason'] == 'PULLBACK_OBSERVED_WAIT_CONFIRMATION'
+    payload['quote'].update(time=NOW+310, bid=97.85, ask=97.95)
+    payload['candles']['M5'][-1].update(
+        time=payload['candles']['M5'][-1]['time']+300,
+        open=97.3, high=97.8, low=97.2, close=97.65)
+    state, output, _ = engine.process_hybrid(state, payload)
+    assert output['state'] == 'ENTRY'
+    assert output['decision'] == 'BUY'
+    tp = state['trade']['tp']
+    payload['quote'].update(time=NOW+315, bid=tp+.01, ask=tp+.11)
+    state, output, _ = engine.process_hybrid(state, payload)
+    assert output['state'] == 'EXIT'
+    assert output['reason'] == 'TP_TOUCHED'
+    assert state['trade'] is None
+
+
+@pytest.mark.parametrize('side', ['BUY', 'SELL'])
+def test_m5_live_reversal_can_oppose_all_slow_timeframes(side):
+    buy = side == 'BUY'
+    payload = feed(bid=100.4 if buy else 99.6, ask=100.5 if buy else 99.7, rising=not buy)
+    # The last closed M15, H1 and H4 all still point the other way.
+    bars = payload['candles']['M5']
+    for bar in bars[-6:-1]:
+        bar.update(open=100, high=100.2, low=99.8, close=100)
+    bars[-1].update(open=99.8 if buy else 100.2, high=100.3,
+                    low=99.7, close=100.25 if buy else 99.75)
+    _, output, _ = MarketState().process_hybrid({}, payload)
+    assert output['setup']['side'] == side
+    assert output['setup']['zone_basis'] == 'BROKEN_M5_LEVEL_LIVE_CONFIRMED'
+    assert output['setup_mode'] == 'COUNTERTREND'
+    assert output['decision'] == 'WAIT'  # still needs a new retest/confirmation
+
+
+def test_sell_reversal_cancels_pending_buy_without_hedging():
+    payload = feed(bid=99.6, ask=99.7)
+    for bar in payload['candles']['M5'][-6:-1]:
+        bar.update(open=100, high=100.2, low=99.8, close=100)
+    payload['candles']['M5'][-1].update(open=100.2, high=100.3, low=99.7, close=99.75)
+    state = armed(payload, side='BUY')
+    state, output, events = MarketState().process_hybrid(state, payload)
+    assert output['state'] == 'CANCEL'
+    assert output['reason'] == 'SHORT_TERM_STRUCTURE_CHANGED'
+    assert state.get('trade') is None
+    payload['quote']['time'] += 5
+    state, output, events = MarketState().process_hybrid(state, payload)
+    assert output['state'] == 'ARMED'
+    assert output['setup']['side'] == 'SELL'
+    assert not any(e['kind'] == 'ENTRY' for e in events)

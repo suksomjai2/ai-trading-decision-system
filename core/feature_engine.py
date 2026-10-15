@@ -243,4 +243,16 @@ class FeatureEngine:
             "direction": direction, "ema20": fast[-1], "ema50": slow[-1],
             "atr14": atr, "structure": "HIGHER" if higher else "LOWER" if lower else "MIXED",
             "last_close": closes[-1], "last_time": candles[-1]["time"],
+            "direction_checks": {
+                "close_above_ema20": closes[-1] > fast[-1],
+                "ema20_above_ema50": fast[-1] > slow[-1],
+                "ema20_rising": fast[-1] > fast[-6],
+                "higher_structure": higher, "lower_structure": lower,
+            },
+            # A recent structural break can precede an EMA50 crossover. Keep
+            # short-term setup evidence separate from the slower trend label.
+            "recent_high": max(c["high"] for c in candles[-6:-1]),
+            "recent_low": min(c["low"] for c in candles[-6:-1]),
+            "breakout_up": closes[-1] > max(c["high"] for c in candles[-6:-1]),
+            "breakout_down": closes[-1] < min(c["low"] for c in candles[-6:-1]),
         }

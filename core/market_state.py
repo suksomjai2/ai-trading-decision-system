@@ -314,6 +314,53 @@ class MarketState:
         "impulse_atr": 1.5, "setup_lifetime": 3600,
     }
 
+    @staticmethod
+    def select_setup(features, histories, quote=None):
+        """H4/H1 describe context; closed M15 structure selects the candidate.
+
+        This permits a short-term countertrend candidate, never an immediate
+        trade. Pullback, a subsequent closed M5 confirmation, live trigger,
+        invalidation, spread and actual-price RR still govern entry.
+        """
+        f = features["M15"]
+        checks = f["direction_checks"]
+        up = (f["breakout_up"] or
+              (f["structure"] == "HIGHER" and checks["close_above_ema20"]
+               and checks["ema20_rising"]))
+        down = (f["breakout_down"] or
+                (f["structure"] == "LOWER" and not checks["close_above_ema20"]
+                 and not checks["ema20_rising"]))
+        # A confirmed M5 structural reversal plus a live break may lead the
+        # last closed M15/H1/H4. Mirror the rule for both market directions.
+        reversal_side, reversal_center = None, None
+        if quote:
+            short = features["M5"]
+            bar = histories["M5"][-1]
+            size = bar["high"] - bar["low"]
+            location = (bar["close"] - bar["low"]) / size if size else 0.5
+            if (short["breakout_down"] and bar["close"] < bar["open"]
+                    and location <= 0.35 and quote["bid"] <= bar["low"]):
+                up, down = False, True
+                reversal_side, reversal_center = "SELL", short["recent_low"]
+            elif (short["breakout_up"] and bar["close"] > bar["open"]
+                    and location >= 0.65 and quote["bid"] >= bar["high"]):
+                up, down = True, False
+                reversal_side, reversal_center = "BUY", short["recent_high"]
+        side = "BUY" if up and not down else "SELL" if down and not up else None
+        if side is None:
+            return None, "NO_M15_STRUCTURAL_SETUP", None, "NONE"
+        sign = 1 if side == "BUY" else -1
+        expected = "UP" if sign == 1 else "DOWN"
+        contexts = [features[tf]["direction"] for tf in ("H4", "H1")]
+        opposing = "DOWN" if sign == 1 else "UP"
+        mode = ("COUNTERTREND" if opposing in contexts else
+                "TREND_CONTINUATION" if expected in contexts else "TRANSITION")
+        if reversal_side:
+            return side, mode, reversal_center, "BROKEN_M5_LEVEL_LIVE_CONFIRMED"
+        breakout = f["breakout_up"] if sign == 1 else f["breakout_down"]
+        center = (f["recent_high"] if sign == 1 else f["recent_low"]) if breakout else f["ema20"]
+        return side, mode, center, "BROKEN_M15_LEVEL" if breakout else "M15_EMA_PULLBACK"
+
     def process_hybrid(self, state, payload):
         """One paper lifecycle per symbol. No broker orders are sent by this method.
 
@@ -331,7 +378,19 @@ class MarketState:
                     for tf, bars in histories.items()}
         direction = features["H4"]["direction"]
         side = {"UP": "BUY", "DOWN": "SELL"}.get(direction)
-        setup_side = side if features["H1"]["direction"] == direction else None
+        setup_side, setup_mode, zone_center, zone_basis = self.select_setup(features, histories, quote)
+        diagnostics = {"policy": "CONTEXTUAL_M15_V1", "h4_context": direction,
+                       "h1_context": features["H1"]["direction"],
+                       "candidate_side": setup_side, "candidate_mode": setup_mode,
+                       "zone_basis": zone_basis, "higher_timeframe_veto": False}
+        # An ordinary M15 pullback may turn the strict label neutral. It does
+        # not by itself invalidate an already armed structural hypothesis.
+        if setup_side is None and state.get("setup"):
+            setup_side = state["setup"]["side"]
+            setup_mode = state["setup"].get("mode", "TRANSITION")
+            zone_center = (state["setup"]["zone_low"] + state["setup"]["zone_high"]) / 2
+            zone_basis = state["setup"].get("zone_basis", "EXISTING_STRUCTURE")
+            diagnostics["retained_pending_setup"] = True
         m15, m5 = histories["M15"], histories["M5"]
         atr = features["M15"]["atr14"]
         cycle = m15[-1]["time"]
@@ -356,7 +415,20 @@ class MarketState:
                           "quality": "NOT_CALIBRATED"},
                 "target": target, "paper_trade": deepcopy(trade),
                 "setup": deepcopy(setup), "timeframes": features,
+                "setup_mode": (setup or trade or {}).get("mode", setup_mode),
+                "diagnostics": deepcopy(diagnostics),
             }
+            # Forward evidence from observed quotes, including rejected entries.
+            # Stored locally by StateStore, not uploaded as a growing cloud table.
+            record("EVALUATION", bid=bid, ask=ask, stage=stage, reason=reason,
+                   candidate_side=setup_side, candidate_mode=setup_mode,
+                   setup_id=(setup or trade or {}).get("id"),
+                   diagnostics=deepcopy(diagnostics))
+            context_clock = {tf: bars[-1]["time"] for tf, bars in histories.items()}
+            if state.get("audit_context_clock") != context_clock:
+                record("CLOSED_CONTEXT", timeframes=deepcopy(features),
+                       recent_candles={tf: deepcopy(bars[-10:]) for tf, bars in histories.items()})
+                state["audit_context_clock"] = context_clock
             state["last_quote_time"] = now
             state["last_mid"] = (bid + ask) / 2
             state["last_result"] = deepcopy(value)
@@ -419,6 +491,8 @@ class MarketState:
 
         if state.get("blocked_cycle") == cycle:
             return result("WAIT", "COOLDOWN_AFTER_EXIT_OR_CANCEL")
+        if now <= state.get("cancel_quote_time", 0):
+            return result("WAIT", "WAIT_NEW_QUOTE_AFTER_CANCEL")
         if atr <= 0:
             return result("WAIT", "NO_VOLATILITY")
         setup = state.get("setup")
@@ -428,52 +502,83 @@ class MarketState:
         if setup:
             sign = 1 if setup["side"] == "BUY" else -1
             adverse_tick = -sign * (midpoint - state.get("last_mid", midpoint))
-            new_bars = [b for b in m5 if b["time"] + 300 > setup["created"]]
+            reference = setup.get("favorable_reference", state.get("last_mid", midpoint))
+            reference = max(reference, midpoint) if sign == 1 else min(reference, midpoint)
+            setup["favorable_reference"] = reference
+            adverse_path = -sign * (midpoint - reference)
+            new_bars = [b for b in m5 if b["time"] >= setup["created"]]
             adverse_bar = any(-sign * (b["close"] - b["open"]) >= config["impulse_atr"] * atr
                               for b in new_bars)
-            impulse = adverse_tick >= config["impulse_atr"] * atr or adverse_bar
+            impulse = max(adverse_tick, adverse_path) >= config["impulse_atr"] * atr or adverse_bar
             invalid = bid <= setup["sl"] if sign == 1 else ask >= setup["sl"]
             reason = ("STRUCTURAL_INVALIDATION" if invalid else "IMPULSE_OVERRIDE" if impulse
-                      else "BIAS_OR_SETUP_CHANGED" if setup_side != setup["side"]
+                      else "SHORT_TERM_STRUCTURE_CHANGED" if setup_side != setup["side"]
                       else "SETUP_EXPIRED" if now >= setup["expires"] else None)
             if reason:
                 record("CANCEL", reason=reason, setup=deepcopy(setup))
                 if not setup.get("zone_seen"):
                     record("MISSED_ENTRY_REVIEW", reason="ZONE_NOT_OBSERVED_BEFORE_CANCEL", setup_id=setup["id"])
                 state["setup"] = None
-                state["blocked_cycle"] = cycle
+                state["cancel_quote_time"] = now
                 return result("CANCEL", reason)
         if setup_side is None:
-            return result("WAIT", "NO_ALIGNED_H4_H1_SETUP")
+            return result("WAIT", "NO_M15_STRUCTURAL_SETUP")
+        diagnostics["spread"] = ask - bid
+        diagnostics["spread_limit"] = config["max_spread_atr"] * atr
         if (ask - bid) > config["max_spread_atr"] * atr:
             return result("ARMED" if setup else "WAIT", "SPREAD_TOO_WIDE", setup=setup)
-        if (setup is None or setup["source_bar"] != histories["H1"][-1]["time"]
-                or setup.get("source_m15", cycle) != cycle):
-            if setup:
-                record("CANCEL", reason="CLOSED_STRUCTURE_REFRESH", setup=deepcopy(setup))
-            center = features["M15"]["ema20"]
+        if setup is None:
+            center = zone_center
             low_zone, high_zone = center - config["zone_atr"] * atr, center + config["zone_atr"] * atr
-            sl = (min(b["low"] for b in m15[-5:]) - 0.1 * atr if setup_side == "BUY"
-                  else max(b["high"] for b in m15[-5:]) + 0.1 * atr)
+            sl = (min(low_zone, min(b["low"] for b in m15[-5:])) - 0.1 * atr if setup_side == "BUY"
+                  else max(high_zone, max(b["high"] for b in m15[-5:])) + 0.1 * atr)
             setup = {"id": f"{payload['symbol']}:{now}", "side": setup_side,
                      "created": now, "expires": now + config["setup_lifetime"],
                      "source_bar": histories["H1"][-1]["time"], "source_m15": cycle,
                      "zone_low": low_zone, "zone_high": high_zone, "sl": sl,
                      "zone_seen": False, "late_chase_recorded": False,
-                     "confirmation_after": m5[-1]["time"]}
+                     "confirmation_after": m5[-1]["time"],
+                     "mode": setup_mode, "zone_basis": zone_basis,
+                     "favorable_reference": midpoint}
             state["setup"] = setup
             record("ARMED", setup=deepcopy(setup))
             return result("ARMED", "WAIT_FOR_PULLBACK_AND_NEW_CONFIRMATION", setup=setup)
+        # A new candle is information, not a reason to discard a valid pullback.
+        # Before a touch, adapt the waiting zone to a new closed M15 structure;
+        # after a touch preserve its evidence and invalidation until cancelled.
+        if setup.get("source_m15", cycle) != cycle:
+            if not setup["zone_seen"]:
+                new_low = zone_center - config["zone_atr"] * atr
+                new_high = zone_center + config["zone_atr"] * atr
+                # Do not move the waiting zone through its frozen thesis stop.
+                # A fresh setup after cancellation must establish new risk.
+                valid_zone = new_low > setup["sl"] if setup_side == "BUY" else new_high < setup["sl"]
+                if valid_zone:
+                    setup["zone_low"], setup["zone_high"] = new_low, new_high
+                    setup["zone_basis"] = zone_basis
+                    record("SETUP_REASSESSED", setup=deepcopy(setup))
+            setup["source_m15"] = cycle
+            setup["source_bar"] = histories["H1"][-1]["time"]
+        setup["mode"] = setup_mode
         executable = ask if setup_side == "BUY" else bid
         in_zone = setup["zone_low"] <= executable <= setup["zone_high"]
+        diagnostics.update(zone_low=setup["zone_low"], zone_high=setup["zone_high"],
+                           executable=executable, in_zone=in_zone)
         if in_zone and not setup["zone_seen"]:
             setup["zone_seen"] = True
             setup["zone_seen_time"] = now
             setup["confirmation_after"] = m5[-1]["time"]
+            setup["pullback_extreme"] = bid if setup_side == "BUY" else ask
             record("PULLBACK_OBSERVED", setup_id=setup["id"], price=executable)
             return result("ARMED", "PULLBACK_OBSERVED_WAIT_CONFIRMATION", setup=setup)
+        if setup.get("zone_seen") and "pullback_extreme" in setup:
+            setup["pullback_extreme"] = (min(setup["pullback_extreme"], bid) if setup_side == "BUY"
+                                         else max(setup["pullback_extreme"], ask))
         chase_distance = (executable - setup["zone_high"] if setup_side == "BUY"
                           else setup["zone_low"] - executable)
+        diagnostics.update(chase_distance=chase_distance,
+                           chase_limit=config["max_chase_atr"] * atr,
+                           pullback_observed=setup["zone_seen"])
         if chase_distance > config["max_chase_atr"] * atr:
             if not setup["late_chase_recorded"]:
                 record("LATE_CHASE_REJECTED", setup_id=setup["id"], distance=chase_distance)
@@ -494,27 +599,41 @@ class MarketState:
         # Bid drives BUY breakout too, preventing a wide ask spread from faking it.
         trigger_quote = bid
         triggered = trigger_quote >= trigger if sign == 1 else trigger_quote <= trigger
+        diagnostics.update(m5_confirms=confirms, live_trigger=trigger,
+                           live_trigger_passed=triggered)
         if not confirms or not triggered:
             return result("ARMED", "WAIT_FOR_LIVE_TRIGGER", setup=setup)
         # Reject a live short-term impulse against the thesis even before M15 close.
         if -sign * (midpoint - confirmation["close"]) >= config["impulse_atr"] * atr:
             state["setup"] = None
-            state["blocked_cycle"] = cycle
+            state["cancel_quote_time"] = now
             record("CANCEL", reason="LIVE_IMPULSE_OVERRIDE", setup=deepcopy(setup))
             return result("CANCEL", "LIVE_IMPULSE_OVERRIDE")
-        risk = sign * (executable - setup["sl"])
+        entry_sl = setup["sl"]
+        if "pullback_extreme" in setup:
+            # Entry risk uses the observed pullback and its confirming M5,
+            # not a distant five-M15 extreme. Never change an open trade's SL.
+            extreme = (min(setup["pullback_extreme"], confirmation["low"]) if sign == 1
+                       else max(setup["pullback_extreme"], confirmation["high"] + ask - bid))
+            local_sl = extreme - sign * 0.1 * atr
+            entry_sl = max(entry_sl, local_sl) if sign == 1 else min(entry_sl, local_sl)
+        risk = sign * (executable - entry_sl)
         reward = config["target_distance"]
         # Cap reward at known H1 resistance/support if closer than the research target.
         barrier = (max(b["high"] for b in histories["H1"][-20:]) if sign == 1
                    else min(b["low"] for b in histories["H1"][-20:]))
         if sign * (barrier - executable) > 0:
             reward = min(reward, sign * (barrier - executable))
+        diagnostics.update(risk=risk, reward=reward, rr=reward / risk if risk > 0 else None,
+                           minimum_rr=config["min_rr"], stop_price=entry_sl,
+                           thesis_invalidation=setup["sl"])
         if risk <= 0 or reward / risk < config["min_rr"]:
             return result("ARMED", "INSUFFICIENT_RISK_REWARD", setup=setup)
         trade = {"id": setup["id"], "side": setup_side, "entry_time": now,
                  "entry_price": executable, "tp": executable + sign * reward,
-                 "sl": setup["sl"], "rr": reward / risk, "mfe_observed": 0.0,
+                 "sl": entry_sl, "rr": reward / risk, "mfe_observed": 0.0,
                  "coverage_gap": False, "basis": "OBSERVED_QUOTE_PAPER_FILL"}
+        trade["mode"] = setup_mode
         state["trade"], state["setup"] = trade, None
         record("ENTRY", trade=deepcopy(trade))
         return result("ENTRY", "HYBRID_CONFIRMED_PAPER_ENTRY", decision=setup_side, trade=trade)

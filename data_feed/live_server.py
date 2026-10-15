@@ -83,6 +83,9 @@ def save_snapshot(payload, result):
         old = previous.get("analysis", {}).get("decision", {})
         new = result["decision"]
         if (age < 60 and old.get("state") == new.get("state")
+                and old.get("reason") == new.get("reason")
+                and old.get("setup_direction") == new.get("setup_direction")
+                and old.get("setup_mode") == new.get("setup_mode")
                 and previous["market"]["timestamp"] == market["timestamp"]):
             return
     temporary = folder / "latest.json.tmp"
