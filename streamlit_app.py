@@ -63,6 +63,72 @@ def price(value):
     return "N/A"
 
 
+def show_paper_report(report):
+    st.divider()
+    st.subheader("ออเดอร์จำลองรอบปัจจุบัน · เริ่มรอบใหม่ 07:00 น.")
+    st.caption("ผลจากการรันสด PAPER ONLY — ไม่มีการส่งออเดอร์เข้าบัญชี MT5")
+    if not report or report.get("status") != "OK":
+        st.info("ยังไม่มีรายงานจาก VPS หรืออ่านประวัติไม่ได้ จึงยังสรุปจำนวนไม่ได้")
+        return
+    bangkok = timezone(timedelta(hours=7))
+
+    def local_time(value):
+        if not value:
+            return "—"
+        return datetime.fromisoformat(value.replace("Z", "+00:00")).astimezone(bangkok).strftime("%d/%m %H:%M:%S")
+
+    st.caption("ตั้งแต่เวลาไทย: " + local_time(report["window_start_utc"]) + " ถึง " +
+               local_time(report["window_end_utc"]))
+    generated = datetime.fromisoformat(report["generated_at_utc"].replace("Z", "+00:00"))
+    if (datetime.now(timezone.utc) - generated).total_seconds() > 180:
+        st.warning("รายงานนี้ยังไม่ได้อัปเดตตามเวลาปัจจุบัน")
+    started = report.get("audit_started_at_utc")
+    if not started:
+        st.warning("ยังไม่พบเวลาที่เริ่มบันทึกการประเมินสด จึงยืนยันความครบถ้วนของช่วงเวลาไม่ได้")
+    elif datetime.fromisoformat(started) > datetime.fromisoformat(report["window_start_utc"]):
+        st.info("เริ่มมีบันทึกสดเวลาไทย " + local_time(started) + " — เริ่มบันทึกหลังเวลาเริ่มรอบ")
+    st.caption("เริ่มรอบถัดไป: " + local_time(report["next_reset_utc"]) +
+               " น. • อัปเดตอัตโนมัติประมาณ 15–30 วินาที ประวัติเดิมไม่ถูกลบ")
+    counts = report["counts"]
+    a, b, c = st.columns(3)
+    a.metric("เข้า BUY ในช่วงนี้", counts["buy_entries"])
+    b.metric("เข้า SELL ในช่วงนี้", counts["sell_entries"])
+    c.metric("สถานะจำลองที่ยังเปิด", counts["open_positions"])
+    d, e, f = st.columns(3)
+    d.metric("ตรวจพบแตะ TP ในช่วงนี้", counts["tp_observed"])
+    e.metric("ตรวจพบแตะ SL ในช่วงนี้", counts["sl_observed"])
+    f.metric("ยังแยกลำดับ TP/SL ไม่ได้", counts["unresolved_positions"])
+    st.caption("นับการเข้าจากเวลา ENTRY และการออกจากเวลา EXIT แยกกัน "
+               "ตารางรวมรายการที่เข้า/ออกในช่วงนี้ และรายการเก่าที่ยังเปิดอยู่")
+    if counts["exits_with_coverage_gap"]:
+        st.warning("มีรายการออก " + str(counts["exits_with_coverage_gap"]) +
+                   " รายการที่ข้อมูลราคาไม่ครบ ไม่ถือเป็นผลชนะ/แพ้ที่ยืนยันเส้นทางครบถ้วน")
+    labels = {"OPEN": "กำลังติดตาม", "TP_TOUCHED": "ตรวจพบแตะ TP",
+              "SL_TOUCHED": "ตรวจพบแตะ SL", "UNRESOLVED_TP_SL": "ลำดับ TP/SL ไม่ชัดเจน",
+              "MISSING_EXIT_RECORD": "ยังไม่พบบันทึกออก"}
+    rows = []
+    for trade in report["trades"]:
+        result = labels.get(trade["status"], trade["status"])
+        if trade["status"] == "OPEN" and not trade["entry_in_window"]:
+            result += " • ค้างจากรอบก่อน"
+        if trade["coverage_gap"]:
+            result += " • ข้อมูลราคาไม่ครบ"
+        rows.append({"ID": trade["id"], "ฝั่ง": trade["side"],
+                     "เวลาเข้า (ไทย)": local_time(trade["entry_time_utc"]),
+                     "ราคาเข้า": trade["entry_price"], "TP": trade["tp"], "SL": trade["sl"],
+                     "RR ตอนเข้า": trade.get("rr"), "ผล": result,
+                     "เวลาออก (ไทย)": local_time(trade.get("exit_time_utc")),
+                     "ราคาที่ตรวจพบตอนออก": trade.get("exit_observed_price"),
+                     "การเปลี่ยนราคาตามฝั่ง": trade.get("observed_price_move"),
+                     "รอบที่เข้า": "รอบนี้" if trade["entry_in_window"] else "รอบก่อน"})
+    if rows:
+        st.dataframe(rows, hide_index=True)
+    else:
+        st.info("ไม่มีออเดอร์จำลองที่เข้า/ออกในช่วงนี้ และไม่มีสถานะที่ยังเปิดอยู่")
+    st.caption("การเปลี่ยนราคาเป็นหน่วยราคา ไม่ใช่กำไรเป็นเงิน ราคาที่ตรวจพบตอนออกไม่ใช่ราคาจับคู่จริง "
+               "ข้อมูลขาดรวมถึงช่วงที่ไม่ทราบราคา Ask ย้อนหลัง จึงไม่คำนวณ Win rate จากรายการเหล่านี้")
+
+
 @st.fragment(run_every=15)
 def dashboard():
     st.button("Refresh now")
@@ -168,6 +234,8 @@ def dashboard():
     col4, col5 = st.columns(2)
     col4.metric("Paper target price" if hybrid else "Target price", price(target.get("target_price")))
     col5.metric("Paper invalidation price" if hybrid else "Invalidation price", price(target.get("invalid_price")))
+
+    show_paper_report(snapshot.get("paper_report_session"))
 
     st.divider()
     st.subheader("MT5 candle")

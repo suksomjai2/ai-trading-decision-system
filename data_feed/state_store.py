@@ -16,6 +16,8 @@ class StateStore:
                 CREATE TABLE IF NOT EXISTS events (
                     id INTEGER PRIMARY KEY, symbol TEXT NOT NULL,
                     time REAL NOT NULL, kind TEXT NOT NULL, value TEXT NOT NULL);
+                CREATE INDEX IF NOT EXISTS events_symbol_kind_time
+                    ON events(symbol,kind,time);
             ''')
 
     @contextmanager

@@ -14,14 +14,29 @@ CONFIG = Path(os.environ["ProgramData"]) / "AITrading" / "supabase.json"
 
 def upload_latest(previous=None):
     raw = (ROOT / "runtime" / "latest.json").read_bytes()
-    if raw == previous:
-        return previous
+    now = time.time()
 
     snapshot = json.loads(raw)
     if snapshot["analysis"]["status"] != "PROCESSED":
         raise ValueError("Snapshot is not processed")
     if snapshot["mode"] != "READ_ONLY":
         raise ValueError("Unexpected mode")
+
+    from data_feed.trade_report import build_report
+    import sqlite3
+    try:
+        snapshot["paper_report_session"] = build_report(ROOT / "runtime" / "engine.sqlite3", now)
+    except (sqlite3.Error, ValueError, KeyError, TypeError) as exc:
+        # A reporting failure must not suppress the independent market snapshot.
+        snapshot["paper_report_session"] = {"schema_version": 1, "mode": "PAPER_ONLY",
+                                         "status": "REPORT_UNAVAILABLE"}
+        print("PAPER_REPORT ERROR", type(exc).__name__, flush=True)
+
+    report_key = {key: value for key, value in snapshot["paper_report_session"].items()
+                  if key not in ("generated_at_utc", "window_end_utc")}
+    token = (raw, json.dumps(report_key, sort_keys=True, allow_nan=False), int(now // 60))
+    if token == previous:
+        return previous
 
     config = json.loads(CONFIG.read_text(encoding="utf-8-sig"))
     base = config["url"].rstrip("/")
@@ -57,7 +72,7 @@ def upload_latest(previous=None):
         snapshot["received_at_utc"],
         flush=True,
     )
-    return raw
+    return token
 
 
 def worker():
