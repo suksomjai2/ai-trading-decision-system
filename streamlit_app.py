@@ -117,6 +117,10 @@ def show_paper_report(report):
                      "เวลาเข้า (ไทย)": local_time(trade["entry_time_utc"]),
                      "ราคาเข้า": trade["entry_price"], "TP": trade["tp"], "SL": trade["sl"],
                      "RR ตอนเข้า": trade.get("rr"), "ผล": result,
+                     "MFE ที่พบ": trade.get("mfe_observed"),
+                     "MAE ที่พบ": trade.get("mae_observed"),
+                     "Policy ตอนเข้า": trade.get("policy"),
+                     "เหตุผลเลือกฝั่งตอนเข้า": (trade.get("selection") or {}).get("selection_reason"),
                      "เวลาออก (ไทย)": local_time(trade.get("exit_time_utc")),
                      "ราคาที่ตรวจพบตอนออก": trade.get("exit_observed_price"),
                      "การเปลี่ยนราคาตามฝั่ง": trade.get("observed_price_move"),
@@ -201,22 +205,35 @@ def dashboard():
         st.write("**Setup mode:**", decision.get("setup_mode", "N/A"))
         diagnostics = decision.get("diagnostics")
         if diagnostics:
-            st.caption("H4/H1 provide context. A M15 candidate still needs a pullback, "
-                       "closed M5 confirmation, a live trigger and acceptable risk/reward.")
+            st.caption("H4/H1 เป็นบริบท ใช้โครงสร้างและปฏิกิริยาราคาเลือกฝั่ง "
+                       "แนวรับ–ต้านเป็นข้อมูลเสริม ไม่มีคะแนนระยะห่างหรือข้อบังคับให้แตะเส้น "
+                       "เงื่อนไขเข้าและ RR เดิมยังทำงาน")
+            st.write("**Policy:**", diagnostics.get("policy", "N/A"))
+            selection = diagnostics.get("selection") or {}
+            st.write("**เหตุผลเลือกฝั่ง:**", selection.get("selection_reason", "N/A"))
+            st.write("**M15 / M5 candidate:**", selection.get("m15_candidate") or "NONE",
+                     "/", selection.get("m5_candidate") or "NONE")
             rows = []
             for tf in ("H4", "H1", "M15", "M5"):
                 f = (decision.get("timeframes") or {}).get(tf) or {}
                 rows.append({"Timeframe": tf, "Direction": f.get("direction"),
-                             "Structure": f.get("structure"), "Close": f.get("last_close"),
+                             "Structure": f.get("structure"),
+                             "Swing high": (f.get("price_action") or {}).get("swing_high"),
+                             "Swing low": (f.get("price_action") or {}).get("swing_low"),
+                             "Close": f.get("last_close"),
                              "EMA20": f.get("ema20"), "EMA50": f.get("ema50")})
             st.dataframe(rows, hide_index=True)
             with st.expander("Entry checks and blocking values"):
                 st.json(diagnostics)
+            with st.expander("แนวรับ–ต้านและปฏิกิริยา (ข้อมูลเสริม ไม่บล็อกไม้)"):
+                st.json({tf: ((decision.get("timeframes") or {}).get(tf) or {}).get("price_action", {})
+                         for tf in ("M15", "M5")})
         trade = decision.get("paper_trade") or {}
         st.write("**Paper position:**", trade.get("side", "NONE"))
         if trade:
             st.write("**Paper entry price:**", price(trade.get("entry_price")))
             st.write("**MFE observed (price units):**", price(trade.get("mfe_observed")))
+            st.write("**MAE observed (price units):**", price(trade.get("mae_observed")))
             st.caption("Observed MFE can miss movement between quotes. Historical SELL exits "
                        "cannot be reconstructed exactly without ask-price history.")
         quote = snapshot.get("quote") or {}
