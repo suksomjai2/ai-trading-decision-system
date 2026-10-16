@@ -240,6 +240,7 @@ class FeatureEngine:
         elif closes[-1] < fast[-1] < slow[-1] and fast[-1] < fast[-6] and lower:
             direction = "DOWN"
         return {
+            "price_action": self.price_action(candles, atr),
             "direction": direction, "ema20": fast[-1], "ema50": slow[-1],
             "atr14": atr, "structure": "HIGHER" if higher else "LOWER" if lower else "MIXED",
             "last_close": closes[-1], "last_time": candles[-1]["time"],
@@ -255,4 +256,59 @@ class FeatureEngine:
             "recent_low": min(c["low"] for c in candles[-6:-1]),
             "breakout_up": closes[-1] > max(c["high"] for c in candles[-6:-1]),
             "breakout_down": closes[-1] < min(c["low"] for c in candles[-6:-1]),
+        }
+
+    @staticmethod
+    def price_action(candles, atr):
+        """Describe known levels and reactions, never entry vetoes or a score.
+
+        Pivots use only closed neighbours already supplied. No future bars,
+        tick-volume buying/selling claims, or candle-size-only reversals.
+        """
+        bars = candles[-40:]
+        tolerance = max(0.1 * atr, 1e-9)
+        highs, lows = [], []
+        for i in range(1, len(bars) - 1):
+            left, bar, right = bars[i-1:i+2]
+            if bar['high'] > left['high'] and bar['high'] >= right['high']:
+                highs.append({'price': bar['high'], 'time': bar['time']})
+            if bar['low'] < left['low'] and bar['low'] <= right['low']:
+                lows.append({'price': bar['low'], 'time': bar['time']})
+
+        def relation(points, high):
+            if len(points) < 2:
+                return 'UNKNOWN'
+            difference = points[-1]['price'] - points[-2]['price']
+            if abs(difference) <= tolerance:
+                return 'EQUAL_HIGH' if high else 'EQUAL_LOW'
+            return ('HH' if high else 'HL') if difference > 0 else ('LH' if high else 'LL')
+
+        # These are candidate zones, not a claim that every level will hold.
+        def levels(points):
+            groups = []
+            for point in points:
+                group = next((g for g in groups if abs(g['price']-point['price']) <= tolerance), None)
+                if group:
+                    count = group['touches']
+                    group['price'] = (group['price']*count+point['price'])/(count+1)
+                    group['touches'] += 1
+                    group['last_time'] = point['time']
+                else:
+                    groups.append({'price': point['price'], 'touches': 1, 'last_time': point['time']})
+            return groups[-8:]
+
+        latest = bars[-1]
+        recent = bars[-6:-1]
+        body = [b['close']-b['open'] for b in bars[-3:]]
+        ranges = [b['high']-b['low'] for b in bars[-3:]]
+        return {
+            'swing_high': relation(highs, True), 'swing_low': relation(lows, False),
+            'resistance': levels(highs), 'support': levels(lows),
+            'reference_high': max(b['high'] for b in recent),
+            'reference_low': min(b['low'] for b in recent),
+            'last_bodies': body, 'last_ranges': ranges,
+            'body_contracting': abs(body[-1]) < abs(body[-2]),
+            'range_contracting': ranges[-1] < ranges[-2],
+            'latest_high': latest['high'], 'latest_low': latest['low'],
+            'advisory_only': True, 'no_level_proximity_penalty': True,
         }

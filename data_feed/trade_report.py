@@ -91,6 +91,8 @@ def build_report(path, now):
                 'evidence': trade.get('outcome_evidence'),
                 'entry_in_window': entered, 'exit_in_window': exited,
                 'mfe_observed': trade.get('mfe_observed'),
+                'mae_observed': trade.get('mae_observed'),
+                'policy': trade.get('policy'), 'selection': trade.get('selection'),
                 'setup_mode': trade.get('mode'),
             }
             # A quote observation is not a broker fill or realized money profit.

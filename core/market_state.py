@@ -315,7 +315,7 @@ class MarketState:
     }
 
     @staticmethod
-    def select_setup(features, histories, quote=None):
+    def select_setup(features, histories, quote=None, memory=None, evidence=None):
         """H4/H1 describe context; closed M15 structure selects the candidate.
 
         This permits a short-term countertrend candidate, never an immediate
@@ -330,22 +330,91 @@ class MarketState:
         down = (f["breakout_down"] or
                 (f["structure"] == "LOWER" and not checks["close_above_ema20"]
                  and not checks["ema20_rising"]))
-        # A confirmed M5 structural reversal plus a live break may lead the
-        # last closed M15/H1/H4. Mirror the rule for both market directions.
+        # Local swing progression can change before the two five-bar windows.
+        # Equal bases/tops alone do not force a trade or a reversal.
+        action = f.get('price_action') or {}
+        previous, latest = histories['M15'][-2:]
+        if (not up and not down and action.get('swing_high') == 'HH' and action.get('swing_low') == 'HL'
+                and latest['close'] > previous['close']):
+            up, down = True, False
+        elif (not up and not down and action.get('swing_high') == 'LH' and action.get('swing_low') == 'LL'
+              and latest['close'] < previous['close']):
+            up, down = False, True
+        base_side = "BUY" if up and not down else "SELL" if down and not up else None
+        evidence = evidence if evidence is not None else {}
+        evidence.update(m15_candidate=base_side, m5_candidate=None,
+                        selection_reason="M15_EXISTING_SETUP", level_role="ADVISORY_ONLY",
+                        level_proximity_penalty=False, additional_wait=False)
         reversal_side, reversal_center = None, None
         if quote:
             short = features["M5"]
-            bar = histories["M5"][-1]
+            bars = histories["M5"]
+            bar = bars[-1]
             size = bar["high"] - bar["low"]
             location = (bar["close"] - bar["low"]) / size if size else 0.5
-            if (short["breakout_down"] and bar["close"] < bar["open"]
-                    and location <= 0.35 and quote["bid"] <= bar["low"]):
-                up, down = False, True
-                reversal_side, reversal_center = "SELL", short["recent_low"]
-            elif (short["breakout_up"] and bar["close"] > bar["open"]
-                    and location >= 0.65 and quote["bid"] >= bar["high"]):
-                up, down = True, False
-                reversal_side, reversal_center = "BUY", short["recent_high"]
+            buffer = max(0.1 * short['atr14'], 1e-9)
+            action = short.get('price_action') or {}
+            medium = features['M15'].get('price_action') or {}
+            support = action.get('support', []) + medium.get('support', [])
+            resistance = action.get('resistance', []) + medium.get('resistance', [])
+            # Include existing recent extrema even when a pivot is not yet confirmed.
+            lows = [short['recent_low']] + [x['price'] for x in support]
+            highs = [short['recent_high']] + [x['price'] for x in resistance]
+            bid = quote['bid']
+            reaction_side, reaction_level, reason = None, None, None
+            # A level matters only after an observed rejection/reclaim. Being near
+            # (or far from) it never subtracts points or prevents a normal entry.
+            rejected_lows = [x for x in lows if bar['low'] < x-buffer
+                             and bar['close'] > x+buffer and location >= 0.65
+                             and bid >= x+buffer]
+            rejected_highs = [x for x in highs if bar['high'] > x+buffer
+                              and bar['close'] < x-buffer and location <= 0.35
+                              and bid <= x-buffer]
+            if rejected_lows and not rejected_highs:
+                reaction_side, reaction_level, reason = 'BUY', max(rejected_lows), 'SUPPORT_RECLAIM'
+            elif rejected_highs and not rejected_lows:
+                reaction_side, reaction_level, reason = 'SELL', min(rejected_highs), 'RESISTANCE_REJECTION'
+            # A large candle can fail immediately: no requirement for shrinking
+            # candles, another M15 close, or HTF agreement.
+            if short['breakout_up'] and bid < short['recent_high']-buffer:
+                reaction_side, reaction_level, reason = 'SELL', short['recent_high'], 'LIVE_FAILED_UP_BREAK'
+            elif short['breakout_down'] and bid > short['recent_low']+buffer:
+                reaction_side, reaction_level, reason = 'BUY', short['recent_low'], 'LIVE_FAILED_DOWN_BREAK'
+
+            memory = memory if memory is not None else {}
+            clock = bar['time']
+            if memory.get('source_m5') != clock:
+                memory.clear()
+            if reaction_side:
+                reversal_side, reversal_center = reaction_side, reaction_level
+                memory.update(source_m5=clock, side=reversal_side, level=reversal_center,
+                              reason=reason, reaction=True)
+            else:
+                # Preserve a live-confirmed break while its BROKEN LEVEL holds.
+                # The old code switched sides whenever bid crossed one candle low.
+                saved = memory.get('side')
+                holds = (bid >= memory.get('level', bid)-buffer if saved == 'BUY'
+                         else bid <= memory.get('level', bid)+buffer)
+                if saved and holds:
+                    reversal_side, reversal_center = saved, memory['level']
+                    reason = memory['reason']
+                else:
+                    memory.clear()
+                    if (short['breakout_down'] and bar['close'] < bar['open']
+                            and location <= 0.35 and bid <= bar['low']):
+                        reversal_side, reversal_center = 'SELL', short['recent_low']
+                    elif (short['breakout_up'] and bar['close'] > bar['open']
+                            and location >= 0.65 and bid >= bar['high']):
+                        reversal_side, reversal_center = 'BUY', short['recent_high']
+                    reason = 'M5_BROKEN_LEVEL_HELD'
+                    if reversal_side:
+                        memory.update(source_m5=clock, side=reversal_side, level=reversal_center,
+                                      reason=reason, reaction=False)
+            if reversal_side:
+                up, down = reversal_side == 'BUY', reversal_side == 'SELL'
+                evidence.update(m5_candidate=reversal_side, selection_reason=reason,
+                                reaction_level=reversal_center,
+                                reaction_candidate=bool(memory.get('reaction')))
         side = "BUY" if up and not down else "SELL" if down and not up else None
         if side is None:
             return None, "NO_M15_STRUCTURAL_SETUP", None, "NONE"
@@ -356,7 +425,8 @@ class MarketState:
         mode = ("COUNTERTREND" if opposing in contexts else
                 "TREND_CONTINUATION" if expected in contexts else "TRANSITION")
         if reversal_side:
-            return side, mode, reversal_center, "BROKEN_M5_LEVEL_LIVE_CONFIRMED"
+            basis = "PRICE_REACTION" if evidence.get("reaction_candidate") else "BROKEN_M5_LEVEL_LIVE_CONFIRMED"
+            return side, mode, reversal_center, basis
         breakout = f["breakout_up"] if sign == 1 else f["breakout_down"]
         center = (f["recent_high"] if sign == 1 else f["recent_low"]) if breakout else f["ema20"]
         return side, mode, center, "BROKEN_M15_LEVEL" if breakout else "M15_EMA_PULLBACK"
@@ -377,9 +447,10 @@ class MarketState:
         features = {tf: self.feature_engine.calculate_history(bars)
                     for tf, bars in histories.items()}
         direction = features["H4"]["direction"]
-        side = {"UP": "BUY", "DOWN": "SELL"}.get(direction)
-        setup_side, setup_mode, zone_center, zone_basis = self.select_setup(features, histories, quote)
-        diagnostics = {"policy": "CONTEXTUAL_M15_V1", "h4_context": direction,
+        selection = {}
+        setup_side, setup_mode, zone_center, zone_basis = self.select_setup(
+            features, histories, quote, state.setdefault("direction_memory", {}), selection)
+        diagnostics = {"policy": "CONTEXTUAL_REACTION_V2", "selection": selection, "h4_context": direction,
                        "h1_context": features["H1"]["direction"],
                        "candidate_side": setup_side, "candidate_mode": setup_mode,
                        "zone_basis": zone_basis, "higher_timeframe_veto": False}
@@ -439,6 +510,8 @@ class MarketState:
             sign = 1 if trade["side"] == "BUY" else -1
             exit_quote = bid if sign == 1 else ask
             trade["mfe_observed"] = max(trade["mfe_observed"], sign * (exit_quote - trade["entry_price"]))
+            trade["mae_observed"] = max(trade.get("mae_observed", 0.0),
+                                        -sign * (exit_quote - trade["entry_price"]))
             if now - previous_time > 30:
                 trade["coverage_gap"] = True
             # Only complete M5 bars which started AFTER entry can establish a touch.
@@ -481,11 +554,12 @@ class MarketState:
                 state["blocked_cycle"] = cycle
                 # Exit and reverse are always separate evaluations, never same tick/bar.
                 return result("EXIT", outcome, decision="EXIT", trade=trade)
-            opposing = side is not None and side != trade["side"]
+            opposing = setup_side is not None and setup_side != trade["side"]
             record_needed = opposing and not trade.get("opposing_bias", False)
             trade["opposing_bias"] = opposing
             if record_needed:
-                record("OPPOSING_BIAS_WHILE_MANAGING", trade_id=trade["id"], direction=direction)
+                record("OPPOSING_BIAS_WHILE_MANAGING", trade_id=trade["id"],
+                       direction=setup_side, selection=deepcopy(selection))
             return result("MANAGE", "OPPOSING_BIAS_NO_REVERSE" if opposing else "PAPER_POSITION_OPEN",
                           trade=trade)
 
@@ -631,7 +705,8 @@ class MarketState:
             return result("ARMED", "INSUFFICIENT_RISK_REWARD", setup=setup)
         trade = {"id": setup["id"], "side": setup_side, "entry_time": now,
                  "entry_price": executable, "tp": executable + sign * reward,
-                 "sl": entry_sl, "rr": reward / risk, "mfe_observed": 0.0,
+                 "sl": entry_sl, "rr": reward / risk, "mfe_observed": 0.0, "mae_observed": ask-bid,
+                 "policy": "CONTEXTUAL_REACTION_V2", "selection": deepcopy(selection),
                  "coverage_gap": False, "basis": "OBSERVED_QUOTE_PAPER_FILL"}
         trade["mode"] = setup_mode
         state["trade"], state["setup"] = trade, None

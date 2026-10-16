@@ -545,7 +545,7 @@ def test_m5_live_reversal_can_oppose_all_slow_timeframes(side):
                     low=99.7, close=100.25 if buy else 99.75)
     _, output, _ = MarketState().process_hybrid({}, payload)
     assert output['setup']['side'] == side
-    assert output['setup']['zone_basis'] == 'BROKEN_M5_LEVEL_LIVE_CONFIRMED'
+    assert output['setup']['zone_basis'] in ('BROKEN_M5_LEVEL_LIVE_CONFIRMED', 'PRICE_REACTION')
     assert output['setup_mode'] == 'COUNTERTREND'
     assert output['decision'] == 'WAIT'  # still needs a new retest/confirmation
 

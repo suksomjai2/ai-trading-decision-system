@@ -104,7 +104,8 @@ class Handler(BaseHTTPRequestHandler):
         if self.path == "/health":
             response = {
                 "status": "OK",
-                "mode": "READ_ONLY"
+                "mode": "READ_ONLY",
+                "policy": "CONTEXTUAL_REACTION_V2"
             }
             self.send_json(200, response)
             return
