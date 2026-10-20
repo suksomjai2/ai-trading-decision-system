@@ -32,9 +32,17 @@ def upload_latest(previous=None):
                                          "status": "REPORT_UNAVAILABLE"}
         print("PAPER_REPORT ERROR", type(exc).__name__, flush=True)
 
+    # Research failures never suppress market or decision reports.
+    try:
+        from data_feed.research_observer import build_research_report
+        snapshot['post_sl_research'] = build_research_report(ROOT / 'runtime/research.sqlite3', now)
+    except Exception as exc:
+        snapshot['post_sl_research'] = {'status': 'UNAVAILABLE', 'research_only': True}
+        print('POST_SL_RESEARCH ERROR', type(exc).__name__, flush=True)
+
     report_key = {key: value for key, value in snapshot["paper_report_session"].items()
                   if key not in ("generated_at_utc", "window_end_utc")}
-    token = (raw, json.dumps(report_key, sort_keys=True, allow_nan=False), int(now // 60))
+    token = (raw, json.dumps(report_key, sort_keys=True, allow_nan=False), json.dumps(snapshot['post_sl_research'].get('items', []), sort_keys=True), int(now // 60))
     if token == previous:
         return previous
 

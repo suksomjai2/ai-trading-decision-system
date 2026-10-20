@@ -1,0 +1,15 @@
+{
+  "version": "3.0.0-paper",
+  "policy": "CONTEXTUAL_REACTION_V3",
+  "baseline_commit": "d9b3ac5c0a7dfc5b0178b165430cc183abcaf52d",
+  "decision_changes": [
+    "No retention of PRICE_REACTION pending setup when current selector has no candidate",
+    "max_chase_atr 0.50 -> 0.40"
+  ],
+  "research_only": [
+    "post-SL until current M5 boundary",
+    "decision reason export"
+  ],
+  "mode": "PAPER_ONLY",
+  "research_version": "POST_SL_M5_V1"
+}

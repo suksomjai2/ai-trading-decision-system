@@ -11,11 +11,15 @@ st.set_page_config(
     layout="wide",
 )
 
-st.title("AI Trading Decision System")
-st.subheader("XAUUSD · H4 / H1 / M15 / M5")
-st.caption(
-    "READ_ONLY | Market data: MT5 | Analysis: Python on VPS"
-)
+# Original photograph, responsive layout; no generated portrait or image edits.
+from pathlib import Path
+import base64
+
+photo_path = Path(__file__).resolve().parent / 'assets' / 'dashboard_photo.jpeg'
+photo = base64.b64encode(photo_path.read_bytes()).decode('ascii') if photo_path.exists() else ''
+st.markdown('<style>\n.v3-hero{display:flex;align-items:center;justify-content:space-between;gap:24px;padding:22px 26px;margin-bottom:22px;border:1px solid #dce5f2;border-radius:22px;background:linear-gradient(120deg,#eef5ff 0%,#fff 78%);color:#14253d}\n.v3-hero h1{font-size:clamp(22px,3.1vw,38px);line-height:1.15;margin:10px 0!important;padding:0!important;color:#14253d}\n.v3-hero p{margin:8px 0;color:#4b607a;font-size:14px}.v3-label{display:inline-block;background:#173c6b;color:white;border-radius:30px;padding:5px 12px;font-size:12px;letter-spacing:.08em}\n.v3-photo{width:126px;aspect-ratio:3/4;object-fit:contain;display:block;border-radius:14px;box-shadow:0 8px 22px #173c6b24;flex-shrink:0}\n@media(max-width:560px){.v3-hero{padding:16px;gap:12px}.v3-photo{width:82px}.v3-hero p{font-size:11px}.v3-label{font-size:10px}}\n</style>', unsafe_allow_html=True)
+photo_html = f'<img class="v3-photo" src="data:image/jpeg;base64,{photo}" alt="ภาพประจำ dashboard">' if photo else ''
+st.markdown(f'<section class="v3-hero"><div><span class="v3-label">AI TRADING · V3</span><h1>AI Trading<br>Decision System</h1><p>XAUUSD · H4 / H1 / M15 / M5</p><p>ข้อมูล MT5 · ประเมินด้วย Python · PAPER ONLY</p></div>{photo_html}</section>', unsafe_allow_html=True)
 
 
 def fetch_latest():
@@ -131,6 +135,35 @@ def show_paper_report(report):
         st.info("ไม่มีออเดอร์จำลองที่เข้า/ออกในช่วงนี้ และไม่มีสถานะที่ยังเปิดอยู่")
     st.caption("การเปลี่ยนราคาเป็นหน่วยราคา ไม่ใช่กำไรเป็นเงิน ราคาที่ตรวจพบตอนออกไม่ใช่ราคาจับคู่จริง "
                "ข้อมูลขาดรวมถึงช่วงที่ไม่ทราบราคา Ask ย้อนหลัง จึงไม่คำนวณ Win rate จากรายการเหล่านี้")
+
+
+def show_post_sl(report):
+    st.divider()
+    st.subheader('ติดตามหลัง SL · จนปิดแท่ง M5')
+    st.caption('ข้อมูลเพื่อวิเคราะห์เท่านั้น • ไม่เปลี่ยนผล SL และไม่ใช้เลือกฝั่งหรือเปิดไม้')
+    if not report or report.get('status') != 'OK':
+        st.info('ข้อมูลติดตามยังไม่พร้อมหรือยังไม่อัปเดต การตัดสินใจทำงานแยกจากส่วนนี้')
+        return
+    rows = []
+    labels = {'PENDING':'กำลังติดตาม','INSUFFICIENT_DATA':'ข้อมูลไม่พอ',
+              'RETURNED_INSIDE_SL_AT_LAST_QUOTE':'ราคาล่าสุดกลับเข้า SL',
+              'STILL_OUTSIDE_SL_AT_LAST_QUOTE':'ราคาล่าสุดยังอยู่นอก SL'}
+    def local(t):
+        return datetime.fromtimestamp(t, timezone(timedelta(hours=7))).strftime('%d/%m %H:%M:%S') if t else '—'
+    for v in report.get('items', []):
+        rows.append({'ID':v['trade_id'],'ฝั่ง':v['side'],'เวลา SL':local(v['exit_time']),
+          'ติดตามถึง':local(v['deadline']),'MFE หลังออก':v['mfe_after_exit'],
+          'MAE หลังออก':v['mae_after_exit'],
+          'TP เดิมหลัง SL':'ตรวจพบแตะ' if v['tp_observed_after_sl'] else 'ยังไม่พบในข้อมูล',
+          'เวลาแตะ TP':local(v.get('first_tp_time')),
+          'ผลติดตาม':labels.get(v['classification'],v['classification']),
+          'ราคาปิด Bid M5':v.get('exact_bid_candle_close'),
+          'ข้อมูล':v['coverage']})
+    if rows:st.dataframe(rows,hide_index=True)
+    else:st.caption('ยังไม่มีรายการ SL ที่ติดตามในรอบนี้')
+    st.caption('MFE/MAE หลังออกวัดจากราคาที่ตรวจพบตอน SL ตามฝั่งเดิม ใช้เฉพาะราคาหลังออก '
+               'SELL ใช้ Ask; ราคาปิดแท่งย้อนหลังเป็น Bid จึงยืนยัน Ask ตอนปิดไม่ได้ '
+               'ไม่พบการแตะ TP ในข้อมูล ไม่ได้ยืนยันว่าไม่เคยแตะระหว่างจุดบันทึก')
 
 
 @st.fragment(run_every=15)
@@ -253,6 +286,7 @@ def dashboard():
     col5.metric("Paper invalidation price" if hybrid else "Invalidation price", price(target.get("invalid_price")))
 
     show_paper_report(snapshot.get("paper_report_session"))
+    show_post_sl(snapshot.get("post_sl_research"))
 
     st.divider()
     st.subheader("MT5 candle")

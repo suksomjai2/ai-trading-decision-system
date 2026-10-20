@@ -310,7 +310,7 @@ class MarketState:
     # Initial research parameters, not calibrated probabilities or proven trading rules.
     HYBRID_CONFIG = {
         "min_rr": 1.5, "target_distance": 8.0, "zone_atr": 0.25,
-        "max_chase_atr": 0.5, "max_spread_atr": 0.15,
+        "max_chase_atr": 0.4, "max_spread_atr": 0.15,
         "impulse_atr": 1.5, "setup_lifetime": 3600,
     }
 
@@ -450,13 +450,14 @@ class MarketState:
         selection = {}
         setup_side, setup_mode, zone_center, zone_basis = self.select_setup(
             features, histories, quote, state.setdefault("direction_memory", {}), selection)
-        diagnostics = {"policy": "CONTEXTUAL_REACTION_V2", "selection": selection, "h4_context": direction,
+        diagnostics = {"policy": "CONTEXTUAL_REACTION_V3", "selection": selection, "h4_context": direction,
                        "h1_context": features["H1"]["direction"],
                        "candidate_side": setup_side, "candidate_mode": setup_mode,
                        "zone_basis": zone_basis, "higher_timeframe_veto": False}
         # An ordinary M15 pullback may turn the strict label neutral. It does
         # not by itself invalidate an already armed structural hypothesis.
-        if setup_side is None and state.get("setup"):
+        if (setup_side is None and state.get("setup")
+                and state["setup"].get("zone_basis") != "PRICE_REACTION"):
             setup_side = state["setup"]["side"]
             setup_mode = state["setup"].get("mode", "TRANSITION")
             zone_center = (state["setup"]["zone_low"] + state["setup"]["zone_high"]) / 2
@@ -706,7 +707,7 @@ class MarketState:
         trade = {"id": setup["id"], "side": setup_side, "entry_time": now,
                  "entry_price": executable, "tp": executable + sign * reward,
                  "sl": entry_sl, "rr": reward / risk, "mfe_observed": 0.0, "mae_observed": ask-bid,
-                 "policy": "CONTEXTUAL_REACTION_V2", "selection": deepcopy(selection),
+                 "policy": "CONTEXTUAL_REACTION_V3", "selection": deepcopy(selection),
                  "coverage_gap": False, "basis": "OBSERVED_QUOTE_PAPER_FILL"}
         trade["mode"] = setup_mode
         state["trade"], state["setup"] = trade, None

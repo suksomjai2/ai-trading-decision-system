@@ -11,6 +11,9 @@ stream = path.open("a", encoding="utf-8", buffering=1)
 sys.stdout = stream
 sys.stderr = stream
 
+from data_feed.research_observer import start as start_research
+start_research(root)
+
 from data_feed.supabase_sync import start
 start()
 
