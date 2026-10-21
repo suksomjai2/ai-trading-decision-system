@@ -19,7 +19,7 @@ photo_path = Path(__file__).resolve().parent / 'assets' / 'dashboard_photo.jpeg'
 photo = base64.b64encode(photo_path.read_bytes()).decode('ascii') if photo_path.exists() else ''
 st.markdown('<style>\n.v3-hero{display:flex;align-items:center;justify-content:space-between;gap:24px;padding:22px 26px;margin-bottom:22px;border:1px solid #dce5f2;border-radius:22px;background:linear-gradient(120deg,#eef5ff 0%,#fff 78%);color:#14253d}\n.v3-hero h1{font-size:clamp(22px,3.1vw,38px);line-height:1.15;margin:10px 0!important;padding:0!important;color:#14253d}\n.v3-hero p{margin:8px 0;color:#4b607a;font-size:14px}.v3-label{display:inline-block;background:#173c6b;color:white;border-radius:30px;padding:5px 12px;font-size:12px;letter-spacing:.08em}\n.v3-photo{width:126px;aspect-ratio:3/4;object-fit:contain;display:block;border-radius:14px;box-shadow:0 8px 22px #173c6b24;flex-shrink:0}\n@media(max-width:560px){.v3-hero{padding:16px;gap:12px}.v3-photo{width:82px}.v3-hero p{font-size:11px}.v3-label{font-size:10px}}\n</style>', unsafe_allow_html=True)
 photo_html = f'<img class="v3-photo" src="data:image/jpeg;base64,{photo}" alt="ภาพประจำ dashboard">' if photo else ''
-st.markdown(f'<section class="v3-hero"><div><span class="v3-label">AI TRADING · V3</span><h1>AI Trading<br>Decision System</h1><p>XAUUSD · H4 / H1 / M15 / M5</p><p>ข้อมูล MT5 · ประเมินด้วย Python · PAPER ONLY</p></div>{photo_html}</section>', unsafe_allow_html=True)
+st.markdown(f'<section class="v3-hero"><div><span class="v3-label">AI TRADING · V4</span><h1>AI Trading<br>Decision System</h1><p>XAUUSD · H4 / H1 / M15 / M5</p><p>ข้อมูล MT5 · ประเมินด้วย Python · PAPER ONLY</p></div>{photo_html}</section>', unsafe_allow_html=True)
 
 
 def fetch_latest():
@@ -242,6 +242,9 @@ def dashboard():
                        "แนวรับ–ต้านเป็นข้อมูลเสริม ไม่มีคะแนนระยะห่างหรือข้อบังคับให้แตะเส้น "
                        "เงื่อนไขเข้าและ RR เดิมยังทำงาน")
             st.write("**Policy:**", diagnostics.get("policy", "N/A"))
+            st.caption("V4 ใช้ M15 ที่ระบุ UP/DOWN ครบเงื่อนไขตรวจฝั่งก่อนเข้าไม้; NEUTRAL ยังเข้าได้ตามปกติ")
+            if decision.get('reason') == 'M15_TREND_AGAINST_ENTRY':
+                st.info("ยกเลิก setup: เทรนด์ M15 สวนฝั่งที่จะเข้าไม้")
             selection = diagnostics.get("selection") or {}
             st.write("**เหตุผลเลือกฝั่ง:**", selection.get("selection_reason", "N/A"))
             st.write("**M15 / M5 candidate:**", selection.get("m15_candidate") or "NONE",

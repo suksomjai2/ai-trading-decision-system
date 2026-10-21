@@ -82,7 +82,8 @@ def save_snapshot(payload, result):
         age = (datetime.now(timezone.utc) - datetime.fromisoformat(previous["received_at_utc"])).total_seconds()
         old = previous.get("analysis", {}).get("decision", {})
         new = result["decision"]
-        if (age < 60 and old.get("state") == new.get("state")
+        if (age < 60 and (old.get('diagnostics') or {}).get('policy') == (new.get('diagnostics') or {}).get('policy')
+                and old.get("state") == new.get("state")
                 and old.get("reason") == new.get("reason")
                 and old.get("setup_direction") == new.get("setup_direction")
                 and old.get("setup_mode") == new.get("setup_mode")
@@ -105,7 +106,7 @@ class Handler(BaseHTTPRequestHandler):
             response = {
                 "status": "OK",
                 "mode": "READ_ONLY",
-                "policy": "CONTEXTUAL_REACTION_V3"
+                "policy": "CONTEXTUAL_REACTION_V4"
             }
             self.send_json(200, response)
             return

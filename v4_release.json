@@ -1,0 +1,23 @@
+{
+  "version": "4.0.0-paper",
+  "policy": "CONTEXTUAL_REACTION_V4",
+  "baseline_vps_commit": "7a111e07cd360c9530de919223fb431e29d30d62",
+  "decision_changes": [
+    "V2 core + no stale PRICE_REACTION setup retention",
+    "max_chase_atr 0.50",
+    "Final pre-entry cancellation M15_TREND_AGAINST_ENTRY for full M15 trend opposite candidate"
+  ],
+  "explicitly_excluded": [
+    "inside-confirmation change",
+    "two-quote hold",
+    "new indicators",
+    "live broker execution"
+  ],
+  "mode": "PAPER_ONLY",
+  "research_version": "POST_SL_M5_V1",
+  "research_only": [
+    "Post-SL observer unchanged, separate SQLite",
+    "Reason/event audit ZIP export"
+  ],
+  "dashboard_photo": "Preserve existing asset bytes; never overwrite photo"
+}

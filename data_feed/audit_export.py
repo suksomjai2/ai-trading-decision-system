@@ -46,7 +46,7 @@ def export_audit(root,start_date,end_date,output=None,now=None):
     if start>=end:raise ValueError('No elapsed time in requested dates')
     context_start=start-timedelta(days=1)
     output=Path(output) if output else desktop();output.mkdir(parents=True,exist_ok=True)
-    name='AITrading-V3-Audit-'+start_date+'_'+end_date+'-'+now.astimezone(THAI).strftime('%Y%m%d-%H%M%S-%f')+'.zip'
+    name='AITrading-V4-Audit-'+start_date+'_'+end_date+'-'+now.astimezone(THAI).strftime('%Y%m%d-%H%M%S-%f')+'.zip'
     destination=output/name
     with tempfile.TemporaryDirectory(prefix='AITrading-audit-') as tmp:
         folder=Path(tmp);db=folder/'audit-snapshot.sqlite3'
@@ -76,6 +76,11 @@ def export_audit(root,start_date,end_date,output=None,now=None):
                 move=(1 if tr['side']=='BUY' else -1)*(tr['exit_observed_price']-tr['entry_price']) if tr.get('exit_observed_price') is not None else None
                 writer.writerow({**tr,'observed_price_move':move})
         dump(folder/'engine_state_at_export.json',state)
+        vetoes=[dict(event_id=i,symbol=symbol,**json.loads(raw))
+                for i,symbol,stamp,kind,raw in values
+                if kind=='CANCEL' and start.timestamp()<=stamp<end.timestamp()
+                and json.loads(raw).get('reason')=='M15_TREND_AGAINST_ENTRY']
+        dump(folder/'entry_vetoes.json',vetoes)
         research_status='NOT_FOUND'
         if (root/'runtime/research.sqlite3').exists():
             research_db=folder/'research-snapshot.sqlite3';snapshot(root/'runtime/research.sqlite3',research_db)
@@ -93,7 +98,7 @@ def export_audit(root,start_date,end_date,output=None,now=None):
         paths=[]
         for part in ['core','data_feed']:
             paths.extend((root/part).glob('*.py'))
-        paths.extend(root/p for p in ['run_vps_server.py','streamlit_app.py','v3_release.json'] if (root/p).exists())
+        paths.extend(root/p for p in ['run_vps_server.py','streamlit_app.py','v3_release.json','v4_release.json','docs/V4_ARCHITECTURE_RULES_TH.md'] if (root/p).exists())
         for p in paths:
             rel=p.relative_to(root);target=folder/'source'/rel;target.parent.mkdir(parents=True,exist_ok=True)
             raw=p.read_bytes();target.write_bytes(raw);hashes[str(rel).replace('\\','/')]=hashlib.sha256(raw).hexdigest()
@@ -107,16 +112,17 @@ def export_audit(root,start_date,end_date,output=None,now=None):
         try:
             commit=subprocess.run(['git','-C',str(root),'rev-parse','HEAD'],capture_output=True,text=True,timeout=5).stdout.strip()
         except (OSError,subprocess.TimeoutExpired):commit='UNAVAILABLE'
-        dump(folder/'metadata.json',dict(export_version='AUDIT_V3_1',exported_utc=now.isoformat(),
+        dump(folder/'metadata.json',dict(export_version='AUDIT_V4_1',exported_utc=now.isoformat(),
              requested_start_thai=start.isoformat(),end_exclusive_thai=end.isoformat(),context_start_thai=context_start.isoformat(),
              git_commit=commit,source_sha256=hashes,event_counts_in_requested_window=counts,
-             research_status=research_status,notes=[
+             research_status=research_status,m15_entry_veto_count=len(vetoes),notes=[
                  'Decision and research databases captured separately using SQLite backup; see observer cursor.',
                  'engine_state_at_export is current state, not state at requested historical end.',
                  'events.jsonl includes one prior context day. Filter by requested window for trade counts.',
                  'All results PAPER_ONLY and sampled, not broker fills or monetary profit.',
                  'No credentials, raw runtime database, browser sessions or .env files included.']))
         (folder/'START_HERE_TH.txt').write_text('เริ่มที่ metadata.json แล้วอ่าน trades.csv / trades.json\n'
+              'entry_vetoes.json บันทึก setup ที่ถูกยกเลิกเพราะ M15 สวนฝั่งก่อนเข้าไม้\n'
               'events.jsonl เป็นข้อมูลตัดสินใจ; post_sl_research.json และ decision_explanations.jsonl เป็นข้อมูลวิเคราะห์แยกส่วน\n'
               'ตรวจ research_progress.json ว่า observer ตามข้อมูลทันหรือไม่ ช่วงข้อมูลขาดไม่เท่ากับยืนยันว่าไม่แตะ TP\n'
               'มีข้อมูลประกอบก่อนวันเริ่มหนึ่งวัน ห้ามนำมานับรวมผลโดยไม่กรองเวลา\n',encoding='utf-8')

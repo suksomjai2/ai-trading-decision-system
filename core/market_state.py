@@ -310,7 +310,7 @@ class MarketState:
     # Initial research parameters, not calibrated probabilities or proven trading rules.
     HYBRID_CONFIG = {
         "min_rr": 1.5, "target_distance": 8.0, "zone_atr": 0.25,
-        "max_chase_atr": 0.4, "max_spread_atr": 0.15,
+        "max_chase_atr": 0.5, "max_spread_atr": 0.15,
         "impulse_atr": 1.5, "setup_lifetime": 3600,
     }
 
@@ -450,7 +450,7 @@ class MarketState:
         selection = {}
         setup_side, setup_mode, zone_center, zone_basis = self.select_setup(
             features, histories, quote, state.setdefault("direction_memory", {}), selection)
-        diagnostics = {"policy": "CONTEXTUAL_REACTION_V3", "selection": selection, "h4_context": direction,
+        diagnostics = {"policy": "CONTEXTUAL_REACTION_V4", "selection": selection, "h4_context": direction,
                        "h1_context": features["H1"]["direction"],
                        "candidate_side": setup_side, "candidate_mode": setup_mode,
                        "zone_basis": zone_basis, "higher_timeframe_veto": False}
@@ -704,10 +704,22 @@ class MarketState:
                            thesis_invalidation=setup["sl"])
         if risk <= 0 or reward / risk < config["min_rr"]:
             return result("ARMED", "INSUFFICIENT_RISK_REWARD", setup=setup)
+        m15_trend = features['M15']['direction']
+        opposing_m15 = 'DOWN' if setup_side == 'BUY' else 'UP'
+        diagnostics.update(m15_entry_check=dict(direction=m15_trend, candidate_side=setup_side,
+                           against_entry=m15_trend == opposing_m15, neutral_allowed=True))
+        if m15_trend == opposing_m15:
+            record('CANCEL', reason='M15_TREND_AGAINST_ENTRY', setup=deepcopy(setup),
+                   m15_direction=m15_trend, candidate_side=setup_side,
+                   candidate_entry=executable, candidate_sl=entry_sl,
+                   candidate_tp=executable+sign*reward)
+            state['setup'] = None
+            state['cancel_quote_time'] = now
+            return result('CANCEL', 'M15_TREND_AGAINST_ENTRY')
         trade = {"id": setup["id"], "side": setup_side, "entry_time": now,
                  "entry_price": executable, "tp": executable + sign * reward,
                  "sl": entry_sl, "rr": reward / risk, "mfe_observed": 0.0, "mae_observed": ask-bid,
-                 "policy": "CONTEXTUAL_REACTION_V3", "selection": deepcopy(selection),
+                 "policy": "CONTEXTUAL_REACTION_V4", "selection": deepcopy(selection),
                  "coverage_gap": False, "basis": "OBSERVED_QUOTE_PAPER_FILL"}
         trade["mode"] = setup_mode
         state["trade"], state["setup"] = trade, None
