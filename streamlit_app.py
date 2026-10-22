@@ -19,7 +19,7 @@ photo_path = Path(__file__).resolve().parent / 'assets' / 'dashboard_photo.jpeg'
 photo = base64.b64encode(photo_path.read_bytes()).decode('ascii') if photo_path.exists() else ''
 st.markdown('<style>\n.v3-hero{display:flex;align-items:center;justify-content:space-between;gap:24px;padding:22px 26px;margin-bottom:22px;border:1px solid #dce5f2;border-radius:22px;background:linear-gradient(120deg,#eef5ff 0%,#fff 78%);color:#14253d}\n.v3-hero h1{font-size:clamp(22px,3.1vw,38px);line-height:1.15;margin:10px 0!important;padding:0!important;color:#14253d}\n.v3-hero p{margin:8px 0;color:#4b607a;font-size:14px}.v3-label{display:inline-block;background:#173c6b;color:white;border-radius:30px;padding:5px 12px;font-size:12px;letter-spacing:.08em}\n.v3-photo{width:126px;aspect-ratio:3/4;object-fit:contain;display:block;border-radius:14px;box-shadow:0 8px 22px #173c6b24;flex-shrink:0}\n@media(max-width:560px){.v3-hero{padding:16px;gap:12px}.v3-photo{width:82px}.v3-hero p{font-size:11px}.v3-label{font-size:10px}}\n</style>', unsafe_allow_html=True)
 photo_html = f'<img class="v3-photo" src="data:image/jpeg;base64,{photo}" alt="ภาพประจำ dashboard">' if photo else ''
-st.markdown(f'<section class="v3-hero"><div><span class="v3-label">AI TRADING · V4</span><h1>AI Trading<br>Decision System</h1><p>XAUUSD · H4 / H1 / M15 / M5</p><p>ข้อมูล MT5 · ประเมินด้วย Python · PAPER ONLY</p></div>{photo_html}</section>', unsafe_allow_html=True)
+st.markdown(f'<section class="v3-hero"><div><span class="v3-label">AI TRADING · V5.1</span><h1>AI Trading<br>Decision System</h1><p>XAUUSD · H4 / H1 / M15 / M5</p><p>ข้อมูล MT5 · ประเมินด้วย Python · PAPER ONLY</p></div>{photo_html}</section>', unsafe_allow_html=True)
 
 
 def fetch_latest():
@@ -239,12 +239,14 @@ def dashboard():
         diagnostics = decision.get("diagnostics")
         if diagnostics:
             st.caption("H4/H1 เป็นบริบท ใช้โครงสร้างและปฏิกิริยาราคาเลือกฝั่ง "
-                       "แนวรับ–ต้านเป็นข้อมูลเสริม ไม่มีคะแนนระยะห่างหรือข้อบังคับให้แตะเส้น "
+                       "ระดับราคาถูกใช้เมื่อพบปฏิกิริยา ไม่ใช่คะแนนความแข็งแรงที่ยืนยันแล้ว "
                        "เงื่อนไขเข้าและ RR เดิมยังทำงาน")
             st.write("**Policy:**", diagnostics.get("policy", "N/A"))
-            st.caption("V4 ใช้ M15 ที่ระบุ UP/DOWN ครบเงื่อนไขตรวจฝั่งก่อนเข้าไม้; NEUTRAL ยังเข้าได้ตามปกติ")
+            st.caption("V5.1: แท่งในกรอบ + 2 quote + chase 0.45 ATR; เฉพาะ setup ที่อ้างตามขาต่อจาก M5 ต้องมี M15 candidate ตรงฝั่ง")
             if decision.get('reason') == 'M15_TREND_AGAINST_ENTRY':
                 st.info("ยกเลิก setup: เทรนด์ M15 สวนฝั่งที่จะเข้าไม้")
+            if decision.get('reason') == 'CONTINUATION_WITHOUT_M15_CANDIDATE':
+                st.info('ยกเลิก setup ตามขาต่อ: ยังไม่มี M15 candidate ตรงฝั่ง')
             selection = diagnostics.get("selection") or {}
             st.write("**เหตุผลเลือกฝั่ง:**", selection.get("selection_reason", "N/A"))
             st.write("**M15 / M5 candidate:**", selection.get("m15_candidate") or "NONE",
@@ -290,6 +292,21 @@ def dashboard():
 
     show_paper_report(snapshot.get("paper_report_session"))
     show_post_sl(snapshot.get("post_sl_research"))
+    with st.expander('ประวัติเหตุผล setup: ต้นกำเนิด → ระหว่างรอ → ตอนเข้า',expanded=False):
+        report=snapshot.get('setup_lifecycle') or {}
+        st.caption('ข้อมูลสำหรับวิเคราะห์ ไม่เปลี่ยนการตัดสินใจ แสดงรายการล่าสุด; ประวัติครบอยู่ใน ZIP')
+        st.write('สถานะข้อมูล:',report.get('status','WAITING_FOR_V5_SYNC'))
+        for item in report.get('items',[]):
+            origin=item.get('origin') or {}; oe=origin.get('evidence') or {}; entry=item.get('entry') or {}
+            ee=entry.get('evidence') or {}; pending=item.get('latest_setup') or {}
+            st.write('**Setup:**',item.get('setup_id'), '—',item.get('status'))
+            st.write('**ต้นกำเนิด:**',(oe.get('selection') or {}).get('selection_reason') or item.get('origin_status'))
+            st.write('**เหตุผลล่าสุด:**',((item.get('last_evidence') or {}).get('selection') or {}).get('selection_reason','N/A'))
+            st.write('**เหตุผลตอนเข้า:**',(ee.get('selection') or {}).get('selection_reason','ยังไม่เข้า'))
+            st.write('**โซน / จุดที่เหตุผลเสีย:**',price(pending.get('zone_low')),'–',price(pending.get('zone_high')),'/',price(pending.get('sl')))
+            st.caption('ระดับที่ใช้วางแผน อาจต่างจาก SL ตอนเข้าที่คำนวณจากจังหวะย่อ')
+            st.json(item)
+
 
     st.divider()
     st.subheader("MT5 candle")
