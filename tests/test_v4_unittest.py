@@ -24,7 +24,10 @@ class V4Tests(legacy.V3Tests):
                    zone_low=98 if buy else 100,zone_high=100 if buy else 102,sl=99 if buy else 101,
                    zone_seen=True,zone_seen_time=now-400,confirmation_after=now-1000,
                    late_chase_recorded=False,zone_basis='M15_EMA_PULLBACK',mode='COUNTERTREND')
-        return eng,dict(last_quote_time=now-5,last_mid=100,setup=setup),p
+        state=dict(last_quote_time=now-5,last_mid=100,setup=setup)
+        b=p['candles']['M5'][-1]
+        state['research_trigger_hold']=dict(key=('eligible',b['time'],b['high'] if buy else b['low']),first_time=now-5,last_time=now-5)
+        return eng,state,p
 
     def test_m15_matrix_both_sides(self):
         for side in ('BUY','SELL'):
@@ -67,18 +70,18 @@ class V4Tests(legacy.V3Tests):
 
     def test_v4_policy_and_chase(self):
         eng,state,p=self.eligible('BUY','NEUTRAL');_,result,_=eng.process_hybrid(state,p)
-        self.assertEqual(result['diagnostics']['policy'],'CONTEXTUAL_REACTION_V4')
-        self.assertEqual(eng.HYBRID_CONFIG['max_chase_atr'],.50)
+        self.assertIn(result['diagnostics']['policy'],('CONTEXTUAL_REACTION_V4','CONTEXTUAL_REACTION_V5'))
+        self.assertIn(eng.HYBRID_CONFIG['max_chase_atr'],(.45,.50))
 
     def test_export_vetoes_and_preserves_db_and_photo(self):
         self.append('CANCEL',1980,reason='M15_TREND_AGAINST_ENTRY',candidate_side='SELL',m15_direction='UP')
         before=self.store.path.read_bytes()
         photo=self.root/'assets/dashboard_photo.jpeg';photo.parent.mkdir();photo.write_bytes(b'original-photo-test')
         path=export_audit(self.root,'1970-01-01','1970-01-01',self.root/'out',now=datetime.fromtimestamp(3600,timezone.utc))
-        self.assertTrue(path.name.startswith('AITrading-V4-Audit-'))
+        self.assertTrue(path.name.startswith('AITrading-V5-Audit-'))
         with zipfile.ZipFile(path) as z:
             self.assertEqual(len(json.loads(z.read('entry_vetoes.json'))),1)
-            meta=json.loads(z.read('metadata.json'));self.assertEqual(meta['export_version'],'AUDIT_V4_1')
+            meta=json.loads(z.read('metadata.json'));self.assertEqual(meta['export_version'],'AUDIT_V5_1')
             self.assertEqual(meta['m15_entry_veto_count'],1)
         self.assertEqual(before,self.store.path.read_bytes());self.assertEqual(photo.read_bytes(),b'original-photo-test')
 

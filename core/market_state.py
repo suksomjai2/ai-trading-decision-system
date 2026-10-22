@@ -310,9 +310,30 @@ class MarketState:
     # Initial research parameters, not calibrated probabilities or proven trading rules.
     HYBRID_CONFIG = {
         "min_rr": 1.5, "target_distance": 8.0, "zone_atr": 0.25,
-        "max_chase_atr": 0.5, "max_spread_atr": 0.15,
+        "max_chase_atr": 0.45, "max_spread_atr": 0.15,
         "impulse_atr": 1.5, "setup_lifetime": 3600,
     }
+
+    @staticmethod
+    def research_m15_leg_break(histories, trend, bid):
+        # A structural range reference, never a claim of support strength.
+        bars=histories['M15']
+        reference=None
+        for index in range(5,len(bars)):
+            prior=bars[index-5:index]
+            bar=bars[index]
+            low=min(x['low'] for x in prior)
+            high=max(x['high'] for x in prior)
+            qualifies=(bar['close']<low if trend=='DOWN' else bar['close']>high)
+            if qualifies:
+                boundary=(max(high,bar['high']) if trend=='DOWN' else min(low,bar['low']))
+                reference=dict(trend=trend,source_m15=bar['time'],
+                               prior_range_start=prior[0]['time'],boundary=boundary,
+                               known_at=bar['time']+900)
+        if reference is None:
+            return False, None
+        broken=bid>reference['boundary'] if trend=='DOWN' else bid<reference['boundary']
+        return broken,reference
 
     @staticmethod
     def select_setup(features, histories, quote=None, memory=None, evidence=None):
@@ -450,7 +471,7 @@ class MarketState:
         selection = {}
         setup_side, setup_mode, zone_center, zone_basis = self.select_setup(
             features, histories, quote, state.setdefault("direction_memory", {}), selection)
-        diagnostics = {"policy": "CONTEXTUAL_REACTION_V4", "selection": selection, "h4_context": direction,
+        diagnostics = {"policy": "CONTEXTUAL_REACTION_V5", "selection": selection, "h4_context": direction,
                        "h1_context": features["H1"]["direction"],
                        "candidate_side": setup_side, "candidate_mode": setup_mode,
                        "zone_basis": zone_basis, "higher_timeframe_veto": False}
@@ -472,6 +493,21 @@ class MarketState:
             return state, deepcopy(state["last_result"]), []
 
         def record(kind, **details):
+            if kind in ('ARMED','SETUP_REASSESSED','CANCEL','ENTRY','EXIT'):
+                # These fields are emitted only; decision code never reads them.
+                details['audit_evidence'] = dict(schema='V5_SETUP_EVIDENCE_1',
+                    release_policy='CONTEXTUAL_REACTION_V5', known_at=now,
+                    quote=deepcopy(quote), selection=deepcopy(selection),
+                    selector_basis=zone_basis, selector_mode=setup_mode,
+                    m15=dict(direction=features['M15']['direction'],
+                        structure=features['M15']['structure'],atr14=atr,
+                        direction_checks=deepcopy(features['M15']['direction_checks']),
+                        recent_high=features['M15']['recent_high'],recent_low=features['M15']['recent_low'],
+                        candle=deepcopy(m15[-1])),
+                    m5=dict(direction=features['M5']['direction'],
+                        structure=features['M5']['structure'],candle=deepcopy(m5[-1]),previous=deepcopy(m5[-2])),
+                    h1=features['H1']['direction'],h4=features['H4']['direction'],
+                    entry_checks=deepcopy(diagnostics) if kind=='ENTRY' else None)
             events.append({"time": now, "kind": kind, **details})
 
         def result(stage, reason, decision="WAIT", trade=None, setup=None):
@@ -671,11 +707,31 @@ class MarketState:
         position = ((confirmation["close"] - confirmation["low"]) / size if size else 0.5)
         confirms = body > 0 and (position >= 0.65 if sign == 1 else position <= 0.35)
         trigger = confirmation["high"] if sign == 1 else confirmation["low"]
+        preceding = m5[-2]
+        inside_confirmation = (confirmation['high'] <= preceding['high']
+                               and confirmation['low'] >= preceding['low'])
+        if sign*(preceding['close']-preceding['open']) < 0 and inside_confirmation:
+            trigger = preceding['high'] if sign == 1 else preceding['low']
+        diagnostics.update(inside_confirmation=inside_confirmation, preceding_high=preceding['high'],
+                           preceding_low=preceding['low'])
         # Bid drives BUY breakout too, preventing a wide ask spread from faking it.
         trigger_quote = bid
         triggered = trigger_quote >= trigger if sign == 1 else trigger_quote <= trigger
         diagnostics.update(m5_confirms=confirms, live_trigger=trigger,
                            live_trigger_passed=triggered)
+        if confirms and triggered:
+            hold_key = [setup['id'], confirmation['time'], trigger]  # JSON-stable across SQLite/restarts
+            hold = state.get('research_trigger_hold')
+            held = bool(hold and list(hold.get('key', [])) == hold_key and now > hold['first_time']
+                        and now-hold['last_time'] <= 30)
+            if not held:
+                state['research_trigger_hold'] = dict(key=hold_key, first_time=now, last_time=now)
+            else:
+                hold['last_time'] = now
+            diagnostics['two_successive_trigger_quotes'] = held
+            triggered = held
+        else:
+            state.pop('research_trigger_hold', None)
         if not confirms or not triggered:
             return result("ARMED", "WAIT_FOR_LIVE_TRIGGER", setup=setup)
         # Reject a live short-term impulse against the thesis even before M15 close.
@@ -704,11 +760,27 @@ class MarketState:
                            thesis_invalidation=setup["sl"])
         if risk <= 0 or reward / risk < config["min_rr"]:
             return result("ARMED", "INSUFFICIENT_RISK_REWARD", setup=setup)
+        continuation_claim = (setup.get('zone_basis')=='BROKEN_M5_LEVEL_LIVE_CONFIRMED'
+                              or selection.get('selection_reason')=='M5_BROKEN_LEVEL_HELD')
+        continuation_context_ok = selection.get('m15_candidate')==setup_side
+        diagnostics['continuation_context_check']=dict(applies=continuation_claim,
+            m15_candidate=selection.get('m15_candidate'),side=setup_side,allowed=continuation_context_ok)
+        if continuation_claim and not continuation_context_ok:
+            record('CANCEL',reason='CONTINUATION_WITHOUT_M15_CANDIDATE',setup=deepcopy(setup),selection=deepcopy(selection))
+            state['setup']=None;state['cancel_quote_time']=now
+            return result('CANCEL','CONTINUATION_WITHOUT_M15_CANDIDATE')
         m15_trend = features['M15']['direction']
         opposing_m15 = 'DOWN' if setup_side == 'BUY' else 'UP'
         diagnostics.update(m15_entry_check=dict(direction=m15_trend, candidate_side=setup_side,
                            against_entry=m15_trend == opposing_m15, neutral_allowed=True))
-        if m15_trend == opposing_m15:
+        leg_exception, leg_reference = (self.research_m15_leg_break(histories,m15_trend,bid)
+                                        if m15_trend==opposing_m15 else (False,None))
+        diagnostics['m15_leg_exception']=dict(allowed=leg_exception,reference=leg_reference,
+                                                bid=bid,definition='M15_PRIOR_5_RANGE_ORIGIN')
+        if leg_exception:
+            selection['leg_exception']=deepcopy(diagnostics['m15_leg_exception'])
+            record('M15_LEG_EXCEPTION_ALLOWED',candidate_side=setup_side,reference=deepcopy(leg_reference),bid=bid)
+        if m15_trend == opposing_m15 and not leg_exception:
             record('CANCEL', reason='M15_TREND_AGAINST_ENTRY', setup=deepcopy(setup),
                    m15_direction=m15_trend, candidate_side=setup_side,
                    candidate_entry=executable, candidate_sl=entry_sl,
@@ -719,9 +791,9 @@ class MarketState:
         trade = {"id": setup["id"], "side": setup_side, "entry_time": now,
                  "entry_price": executable, "tp": executable + sign * reward,
                  "sl": entry_sl, "rr": reward / risk, "mfe_observed": 0.0, "mae_observed": ask-bid,
-                 "policy": "CONTEXTUAL_REACTION_V4", "selection": deepcopy(selection),
+                 "policy": "CONTEXTUAL_REACTION_V5", "selection": deepcopy(selection),
                  "coverage_gap": False, "basis": "OBSERVED_QUOTE_PAPER_FILL"}
         trade["mode"] = setup_mode
         state["trade"], state["setup"] = trade, None
-        record("ENTRY", trade=deepcopy(trade))
+        record("ENTRY", trade=deepcopy(trade), setup=deepcopy(setup))
         return result("ENTRY", "HYBRID_CONFIRMED_PAPER_ENTRY", decision=setup_side, trade=trade)

@@ -119,9 +119,9 @@ class V3Tests(unittest.TestCase):
         self.assertEqual(self.store.path.read_bytes(),before)
 
     def test_v3_policy_and_chase(self):
-        self.assertIn(MarketState.HYBRID_CONFIG['max_chase_atr'],(0.40,0.50))
+        self.assertIn(MarketState.HYBRID_CONFIG['max_chase_atr'],(0.40,0.45,0.50))
         _,result,_=MarketState().process_hybrid({},feed())
-        self.assertIn(result['diagnostics']['policy'],('CONTEXTUAL_REACTION_V3','CONTEXTUAL_REACTION_V4'))
+        self.assertIn(result['diagnostics']['policy'],('CONTEXTUAL_REACTION_V3','CONTEXTUAL_REACTION_V4','CONTEXTUAL_REACTION_V5'))
 
     def test_existing_v2_open_trade_keeps_original_tp_sl_and_policy(self):
         payload=feed();now=payload['quote']['time']

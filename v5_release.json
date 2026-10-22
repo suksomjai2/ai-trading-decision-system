@@ -1,0 +1,25 @@
+{
+  "version": "5.1.0-paper",
+  "policy": "CONTEXTUAL_REACTION_V5",
+  "baseline": "Installed V4 source audited 22 Oct 2026",
+  "mode": "PAPER_ONLY",
+  "decision_changes": [
+    "V5 latest: stale PRICE_REACTION fix, inside confirmation, two quote hold, chase0.45 M15 ATR, existing M15 leg exception",
+    "Only BROKEN_M5_LEVEL_LIVE_CONFIRMED or current M5_BROKEN_LEVEL_HELD requires M15 candidate matching setup side"
+  ],
+  "research_changes": [
+    "Immutable setup origin + selector transitions + entry evidence in separate research database",
+    "Historical end-cut lifecycle ZIP export",
+    "Bounded cloud/dashboard recent setup history"
+  ],
+  "excluded": [
+    "Full V6 lifecycle redesign",
+    "New indicators",
+    "Adjacent-quote engineering change not included: preserve tested V5 two-quote behavior",
+    "Live broker execution"
+  ],
+  "photo": "Existing photograph retained byte-for-byte; no asset replaced",
+  "engineering_fixes": [
+    "Two-quote key stored/compared as canonical JSON list: survives SQLite state round-trip and restart; no adjacent-quote rule added"
+  ]
+}

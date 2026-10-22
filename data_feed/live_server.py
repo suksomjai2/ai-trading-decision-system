@@ -106,7 +106,7 @@ class Handler(BaseHTTPRequestHandler):
             response = {
                 "status": "OK",
                 "mode": "READ_ONLY",
-                "policy": "CONTEXTUAL_REACTION_V4"
+                "policy": "CONTEXTUAL_REACTION_V5"
             }
             self.send_json(200, response)
             return

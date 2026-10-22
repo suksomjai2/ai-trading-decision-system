@@ -41,6 +41,9 @@ class ResearchObserver:
                 CREATE TABLE IF NOT EXISTS observer_state (key TEXT PRIMARY KEY, value TEXT NOT NULL);
             ''')
 
+            from data_feed.setup_lifecycle import ensure_schema
+            ensure_schema(c)
+
     @contextmanager
     def connect(self):
         c=sqlite3.connect(self.path, timeout=0.2)
@@ -59,6 +62,8 @@ class ResearchObserver:
                 high_watermark=a.execute('SELECT COALESCE(MAX(id),0) FROM events').fetchone()[0]
             for event_id,symbol,stamp,kind,raw in rows:
                 e = json.loads(raw)
+                from data_feed.setup_lifecycle import ingest
+                ingest(c,event_id,symbol,stamp,kind,e)
                 if kind == 'EXIT' and e['trade'].get('outcome')=='SL_TOUCHED':
                     self._begin(c,symbol,e['trade'])
                 elif kind == 'EVALUATION':

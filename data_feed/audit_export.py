@@ -8,6 +8,7 @@ import re
 import sqlite3
 import subprocess
 import tempfile
+import time
 import zipfile
 from contextlib import closing
 from datetime import datetime,timezone,timedelta
@@ -27,7 +28,11 @@ def desktop():
 
 def snapshot(source,target):
     with closing(sqlite3.connect(Path(source).resolve().as_uri()+'?mode=ro',uri=True,timeout=5)) as a:
-        with closing(sqlite3.connect(target)) as b:a.backup(b)
+        with closing(sqlite3.connect(target)) as b:
+            deadline=time.monotonic()+30
+            def progress(status,remaining,total):
+                if time.monotonic()>deadline:raise TimeoutError('Audit snapshot busy for over 30 seconds; retry export later')
+            a.backup(b,pages=256,progress=progress,sleep=.05)
 
 def dump(path,value):
     path.write_text(json.dumps(value,ensure_ascii=False,indent=2,allow_nan=False),encoding='utf-8')
@@ -46,7 +51,7 @@ def export_audit(root,start_date,end_date,output=None,now=None):
     if start>=end:raise ValueError('No elapsed time in requested dates')
     context_start=start-timedelta(days=1)
     output=Path(output) if output else desktop();output.mkdir(parents=True,exist_ok=True)
-    name='AITrading-V4-Audit-'+start_date+'_'+end_date+'-'+now.astimezone(THAI).strftime('%Y%m%d-%H%M%S-%f')+'.zip'
+    name='AITrading-V5-Audit-'+start_date+'_'+end_date+'-'+now.astimezone(THAI).strftime('%Y%m%d-%H%M%S-%f')+'.zip'
     destination=output/name
     with tempfile.TemporaryDirectory(prefix='AITrading-audit-') as tmp:
         folder=Path(tmp);db=folder/'audit-snapshot.sqlite3'
@@ -81,6 +86,8 @@ def export_audit(root,start_date,end_date,output=None,now=None):
                 if kind=='CANCEL' and start.timestamp()<=stamp<end.timestamp()
                 and json.loads(raw).get('reason')=='M15_TREND_AGAINST_ENTRY']
         dump(folder/'entry_vetoes.json',vetoes)
+        continuation=[dict(event_id=i,symbol=symbol,**json.loads(raw)) for i,symbol,stamp,kind,raw in values if kind=='CANCEL' and start.timestamp()<=stamp<end.timestamp() and json.loads(raw).get('reason')=='CONTINUATION_WITHOUT_M15_CANDIDATE']
+        dump(folder/'continuation_entry_vetoes.json',continuation)
         research_status='NOT_FOUND'
         if (root/'runtime/research.sqlite3').exists():
             research_db=folder/'research-snapshot.sqlite3';snapshot(root/'runtime/research.sqlite3',research_db)
@@ -91,6 +98,15 @@ def export_audit(root,start_date,end_date,output=None,now=None):
                 with (folder/'decision_explanations.jsonl').open('w',encoding='utf-8') as f:
                     for (raw,) in c.execute('SELECT value FROM decision_explanations WHERE time>=? AND time<? ORDER BY event_id',
                                            (context_start.timestamp(),end.timestamp())):f.write(raw+'\n')
+                from data_feed.setup_lifecycle import export_history
+                try:
+                    summaries,trace=export_history(c,start.timestamp(),end.timestamp())
+                    dump(folder/'setup_lifecycle.json',summaries)
+                    with (folder/'setup_lifecycle_events.jsonl').open('w',encoding='utf-8') as f:
+                        for item in trace:f.write(json.dumps(item,ensure_ascii=False)+'\n')
+                except sqlite3.OperationalError:
+                    dump(folder/'setup_lifecycle.json',[])
+                    (folder/'setup_lifecycle_events.jsonl').write_text('',encoding='utf-8')
                 heartbeat=c.execute("SELECT value FROM observer_state WHERE key='heartbeat'").fetchone()
                 dump(folder/'research_progress.json',json.loads(heartbeat[0]) if heartbeat else {})
             research_db.unlink();research_status='EXPORTED_CHECK_PROGRESS_FOR_BACKLOG'
@@ -98,7 +114,7 @@ def export_audit(root,start_date,end_date,output=None,now=None):
         paths=[]
         for part in ['core','data_feed']:
             paths.extend((root/part).glob('*.py'))
-        paths.extend(root/p for p in ['run_vps_server.py','streamlit_app.py','v3_release.json','v4_release.json','docs/V4_ARCHITECTURE_RULES_TH.md'] if (root/p).exists())
+        paths.extend(root/p for p in ['run_vps_server.py','streamlit_app.py','v3_release.json','v4_release.json','v5_release.json','docs/V5_ARCHITECTURE_RULES_TH.md'] if (root/p).exists())
         for p in paths:
             rel=p.relative_to(root);target=folder/'source'/rel;target.parent.mkdir(parents=True,exist_ok=True)
             raw=p.read_bytes();target.write_bytes(raw);hashes[str(rel).replace('\\','/')]=hashlib.sha256(raw).hexdigest()
@@ -112,18 +128,20 @@ def export_audit(root,start_date,end_date,output=None,now=None):
         try:
             commit=subprocess.run(['git','-C',str(root),'rev-parse','HEAD'],capture_output=True,text=True,timeout=5).stdout.strip()
         except (OSError,subprocess.TimeoutExpired):commit='UNAVAILABLE'
-        dump(folder/'metadata.json',dict(export_version='AUDIT_V4_1',exported_utc=now.isoformat(),
+        dump(folder/'metadata.json',dict(export_version='AUDIT_V5_1',exported_utc=now.isoformat(),
              requested_start_thai=start.isoformat(),end_exclusive_thai=end.isoformat(),context_start_thai=context_start.isoformat(),
              git_commit=commit,source_sha256=hashes,event_counts_in_requested_window=counts,
-             research_status=research_status,m15_entry_veto_count=len(vetoes),notes=[
+             research_status=research_status,m15_entry_veto_count=len(vetoes),continuation_veto_count=len(continuation),notes=[
                  'Decision and research databases captured separately using SQLite backup; see observer cursor.',
                  'engine_state_at_export is current state, not state at requested historical end.',
+                 'setup_lifecycle_events.jsonl includes complete known origin before requested start, cut strictly at requested end. Research backlog may omit unprojected events; events.jsonl is the source.',
                  'events.jsonl includes one prior context day. Filter by requested window for trade counts.',
                  'All results PAPER_ONLY and sampled, not broker fills or monetary profit.',
                  'No credentials, raw runtime database, browser sessions or .env files included.']))
         (folder/'START_HERE_TH.txt').write_text('เริ่มที่ metadata.json แล้วอ่าน trades.csv / trades.json\n'
               'entry_vetoes.json บันทึก setup ที่ถูกยกเลิกเพราะ M15 สวนฝั่งก่อนเข้าไม้\n'
               'events.jsonl เป็นข้อมูลตัดสินใจ; post_sl_research.json และ decision_explanations.jsonl เป็นข้อมูลวิเคราะห์แยกส่วน\n'
+              'setup_lifecycle.json และ setup_lifecycle_events.jsonl แยกต้นกำเนิด เหตุผลระหว่างรอ และหลักฐานตอนเข้า\n'
               'ตรวจ research_progress.json ว่า observer ตามข้อมูลทันหรือไม่ ช่วงข้อมูลขาดไม่เท่ากับยืนยันว่าไม่แตะ TP\n'
               'มีข้อมูลประกอบก่อนวันเริ่มหนึ่งวัน ห้ามนำมานับรวมผลโดยไม่กรองเวลา\n',encoding='utf-8')
         with zipfile.ZipFile(destination,'x',zipfile.ZIP_DEFLATED) as z:
