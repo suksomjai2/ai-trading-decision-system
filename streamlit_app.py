@@ -15,11 +15,22 @@ st.set_page_config(
 from pathlib import Path
 import base64
 
-photo_path = Path(__file__).resolve().parent / 'assets' / 'dashboard_photo.jpeg'
-photo = base64.b64encode(photo_path.read_bytes()).decode('ascii') if photo_path.exists() else ''
-st.markdown('<style>\n.v3-hero{display:flex;align-items:center;justify-content:space-between;gap:24px;padding:22px 26px;margin-bottom:22px;border:1px solid #dce5f2;border-radius:22px;background:linear-gradient(120deg,#eef5ff 0%,#fff 78%);color:#14253d}\n.v3-hero h1{font-size:clamp(22px,3.1vw,38px);line-height:1.15;margin:10px 0!important;padding:0!important;color:#14253d}\n.v3-hero p{margin:8px 0;color:#4b607a;font-size:14px}.v3-label{display:inline-block;background:#173c6b;color:white;border-radius:30px;padding:5px 12px;font-size:12px;letter-spacing:.08em}\n.v3-photo{width:126px;aspect-ratio:3/4;object-fit:contain;display:block;border-radius:14px;box-shadow:0 8px 22px #173c6b24;flex-shrink:0}\n@media(max-width:560px){.v3-hero{padding:16px;gap:12px}.v3-photo{width:82px}.v3-hero p{font-size:11px}.v3-label{font-size:10px}}\n</style>', unsafe_allow_html=True)
-photo_html = f'<img class="v3-photo" src="data:image/jpeg;base64,{photo}" alt="ภาพประจำ dashboard">' if photo else ''
-st.markdown(f'<section class="v3-hero"><div><span class="v3-label">AI TRADING · V5.1</span><h1>AI Trading<br>Decision System</h1><p>XAUUSD · H4 / H1 / M15 / M5</p><p>ข้อมูล MT5 · ประเมินด้วย Python · PAPER ONLY</p></div>{photo_html}</section>', unsafe_allow_html=True)
+# Both photographs are kept byte-for-byte and must stay on the dashboard in every release
+# (guarded by tests/test_dashboard_photos.py).
+PHOTO_FILES = ('dashboard_photo.jpeg', 'dashboard_photo_2.jpeg')
+
+
+def load_photo(name):
+    path = Path(__file__).resolve().parent / 'assets' / name
+    return base64.b64encode(path.read_bytes()).decode('ascii') if path.exists() else ''
+
+
+photos = [load_photo(name) for name in PHOTO_FILES]
+st.markdown('<style>\n.v3-hero{display:flex;align-items:center;justify-content:space-between;gap:24px;padding:22px 26px;margin-bottom:22px;border:1px solid #dce5f2;border-radius:22px;background:linear-gradient(120deg,#eef5ff 0%,#fff 78%);color:#14253d}\n.v3-hero h1{font-size:clamp(22px,3.1vw,38px);line-height:1.15;margin:10px 0!important;padding:0!important;color:#14253d}\n.v3-hero p{margin:8px 0;color:#4b607a;font-size:14px}.v3-label{display:inline-block;background:#173c6b;color:white;border-radius:30px;padding:5px 12px;font-size:12px;letter-spacing:.08em}\n.v3-photos{display:flex;gap:14px;align-items:flex-end;flex-shrink:0}\n.v3-photo{width:148px;aspect-ratio:3/4;object-fit:cover;display:block;border-radius:14px;border:3px solid #fff;box-shadow:0 8px 22px #173c6b24;flex-shrink:0}\n.v3-photo+.v3-photo{transform:translateY(-10px)}\n@media(max-width:560px){.v3-hero{padding:16px;gap:12px}.v3-photos{gap:8px}.v3-photo{width:64px;border-width:2px}.v3-photo+.v3-photo{transform:translateY(-6px)}.v3-hero p{font-size:11px}.v3-label{font-size:10px}}\n</style>', unsafe_allow_html=True)
+photo_html = '<div class="v3-photos">' + ''.join(
+    f'<img class="v3-photo" src="data:image/jpeg;base64,{photo}" alt="ภาพประจำ dashboard">'
+    for photo in photos if photo) + '</div>'
+st.markdown(f'<section class="v3-hero"><div><span class="v3-label">AI TRADING · S5B</span><h1>AI Trading<br>Decision System</h1><p>XAUUSD · H4 / H1 / M15 / M5</p><p>ข้อมูล MT5 · ประเมินด้วย Python · PAPER ONLY</p></div>{photo_html}</section>', unsafe_allow_html=True)
 
 
 def fetch_latest():
@@ -242,7 +253,22 @@ def dashboard():
                        "ระดับราคาถูกใช้เมื่อพบปฏิกิริยา ไม่ใช่คะแนนความแข็งแรงที่ยืนยันแล้ว "
                        "เงื่อนไขเข้าและ RR เดิมยังทำงาน")
             st.write("**Policy:**", diagnostics.get("policy", "N/A"))
-            st.caption("V5.1: แท่งในกรอบ + 2 quote + chase 0.45 ATR; เฉพาะ setup ที่อ้างตามขาต่อจาก M5 ต้องมี M15 candidate ตรงฝั่ง")
+            if diagnostics.get("policy") == "SESSION_BIAS_S5B_V1":
+                st.caption("S5B: เอเชีย 07:00–14:00 รับเฉพาะ BUY • นิวยอร์ก 19:30–02:00 รับเฉพาะ SELL • นอกช่วงไม่เปิดไม้ใหม่ • "
+                           "H1 มีเทรนด์ = ย่อแตะ EMA20 M15 (SL 1.0 / TP 1.5 ATR) • M15 ไม่มีเทรนด์ = fade ขอบกรอบไปกึ่งกลาง • ถือได้ครั้งละไม้")
+                sess = {"ASIA": "เอเชีย", "NY": "นิวยอร์ก", "OUTSIDE": "นอกช่วงเทรด"}
+                st.write("**ช่วงเวลา:**", sess.get(diagnostics.get("session"), diagnostics.get("session")),
+                         "| **รับฝั่ง:**", diagnostics.get("session_allowed_side") or "ไม่เปิดไม้ใหม่",
+                         "| **H1 / M15:**", diagnostics.get("h1_trend", "N/A"), "/", diagnostics.get("m15_trend", "N/A"))
+                signal = diagnostics.get("last_signal") or {}
+                if signal.get("status", "").startswith("SKIPPED"):
+                    st.info("สัญญาณ " + str(signal.get("signal")) + " " + str(signal.get("side")) + " ถูกกรอง: " + signal["status"])
+                book = decision.get("paper_trade") or {}
+                if book.get("component") == "LEGACY":
+                    st.write("**ไม้ที่ถือ:** ไม้ V5 เดิมก่อนติดตั้ง ถือจนปิดตาม TP/SL เดิม")
+                st.caption("ข้อมูล V5 ด้านล่าง (selection / candidate) เป็นข้อมูลวิจัย ไม่ใช่ตัวตัดสินเข้าไม้")
+            else:
+                st.caption("V5.1: แท่งในกรอบ + 2 quote + chase 0.45 ATR; เฉพาะ setup ที่อ้างตามขาต่อจาก M5 ต้องมี M15 candidate ตรงฝั่ง")
             if decision.get('reason') == 'M15_TREND_AGAINST_ENTRY':
                 st.info("ยกเลิก setup: เทรนด์ M15 สวนฝั่งที่จะเข้าไม้")
             if decision.get('reason') == 'CONTINUATION_WITHOUT_M15_CANDIDATE':
