@@ -51,7 +51,7 @@ def export_audit(root,start_date,end_date,output=None,now=None):
     if start>=end:raise ValueError('No elapsed time in requested dates')
     context_start=start-timedelta(days=1)
     output=Path(output) if output else desktop();output.mkdir(parents=True,exist_ok=True)
-    name='AITrading-V5-Audit-'+start_date+'_'+end_date+'-'+now.astimezone(THAI).strftime('%Y%m%d-%H%M%S-%f')+'.zip'
+    name='AITrading-S5B-Audit-'+start_date+'_'+end_date+'-'+now.astimezone(THAI).strftime('%Y%m%d-%H%M%S-%f')+'.zip'
     destination=output/name
     with tempfile.TemporaryDirectory(prefix='AITrading-audit-') as tmp:
         folder=Path(tmp);db=folder/'audit-snapshot.sqlite3'
@@ -114,7 +114,7 @@ def export_audit(root,start_date,end_date,output=None,now=None):
         paths=[]
         for part in ['core','data_feed']:
             paths.extend((root/part).glob('*.py'))
-        paths.extend(root/p for p in ['run_vps_server.py','streamlit_app.py','v3_release.json','v4_release.json','v5_release.json','docs/V5_ARCHITECTURE_RULES_TH.md'] if (root/p).exists())
+        paths.extend(root/p for p in ['run_vps_server.py','streamlit_app.py','v3_release.json','v4_release.json','v5_release.json','s5b_release.json','docs/V5_ARCHITECTURE_RULES_TH.md'] if (root/p).exists())
         for p in paths:
             rel=p.relative_to(root);target=folder/'source'/rel;target.parent.mkdir(parents=True,exist_ok=True)
             raw=p.read_bytes();target.write_bytes(raw);hashes[str(rel).replace('\\','/')]=hashlib.sha256(raw).hexdigest()
@@ -140,6 +140,7 @@ def export_audit(root,start_date,end_date,output=None,now=None):
                  'No credentials, raw runtime database, browser sessions or .env files included.']))
         (folder/'START_HERE_TH.txt').write_text('เริ่มที่ metadata.json แล้วอ่าน trades.csv / trades.json\n'
               'entry_vetoes.json บันทึก setup ที่ถูกยกเลิกเพราะ M15 สวนฝั่งก่อนเข้าไม้\n'
+              'ไม้จริงคือ ENTRY/EXIT (policy SESSION_BIAS_S5B_V1); V5_CANDIDATE_* เป็นสัญญาณ V5 สำหรับวิจัย; S5B_SIGNAL_SKIPPED คือสัญญาณที่ถูกกรองตามช่วงเวลา\n'
               'events.jsonl เป็นข้อมูลตัดสินใจ; post_sl_research.json และ decision_explanations.jsonl เป็นข้อมูลวิเคราะห์แยกส่วน\n'
               'setup_lifecycle.json และ setup_lifecycle_events.jsonl แยกต้นกำเนิด เหตุผลระหว่างรอ และหลักฐานตอนเข้า\n'
               'ตรวจ research_progress.json ว่า observer ตามข้อมูลทันหรือไม่ ช่วงข้อมูลขาดไม่เท่ากับยืนยันว่าไม่แตะ TP\n'

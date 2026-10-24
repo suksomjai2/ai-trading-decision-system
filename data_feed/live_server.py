@@ -6,6 +6,7 @@ from data_feed.mt5_bridge import MT5Bridge
 from data_feed.pipeline import MarketDataPipeline
 from core.feature_engine import FeatureEngine
 from core.market_state import MarketState
+from core.session_bias_policy import SessionBiasS5B, POLICY
 
 
 RUNTIME = Path(__file__).resolve().parents[1] / "runtime"
@@ -13,6 +14,8 @@ RUNTIME = Path(__file__).resolve().parents[1] / "runtime"
 bridge = MT5Bridge()
 feature_engine = FeatureEngine()
 market_state = MarketState()
+# Live paper decision policy; the V5 engine runs inside it for audit/legacy only.
+session_policy = SessionBiasS5B()
 
 
 _store = None
@@ -48,7 +51,7 @@ def analyze(payload):
         return {"status": "REJECTED", "reason": str(exc), "decision": None}
     if _store is None:
         _store = StateStore(RUNTIME / "engine.sqlite3")
-    decision = _store.process(payload["symbol"], lambda state: market_state.process_hybrid(state, payload))
+    decision = _store.process(payload["symbol"], lambda state: session_policy.process(state, payload))
     stamp = datetime.fromtimestamp(payload["candles"]["M15"][-1]["time"], timezone.utc).isoformat()
     return {"status": "PROCESSED", "symbol": payload["symbol"], "timeframe": "M15",
             "timestamp": stamp, "decision": decision}
@@ -106,7 +109,7 @@ class Handler(BaseHTTPRequestHandler):
             response = {
                 "status": "OK",
                 "mode": "READ_ONLY",
-                "policy": "CONTEXTUAL_REACTION_V5"
+                "policy": POLICY
             }
             self.send_json(200, response)
             return

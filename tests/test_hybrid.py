@@ -209,7 +209,9 @@ def test_full_server_feed_snapshot_and_restart(tmp_path, monkeypatch):
     payload = feed()
     output = live_server.analyze(payload)
     assert output["status"] == "PROCESSED"
-    assert output["decision"]["state"] == "ARMED"
+    # Live policy is S5B; the V5 engine underneath still arms its research setup.
+    assert output["decision"]["state"] == "WAIT"
+    assert output["decision"]["diagnostics"]["component_stage"] == "ARMED"
     live_server.save_snapshot(payload, output)
     stored = json.loads((tmp_path / "latest.json").read_text())
     assert stored["market"]["symbol"] == "XAUUSD"
