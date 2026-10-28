@@ -30,7 +30,7 @@ st.markdown('<style>\n.v3-hero{display:flex;align-items:center;justify-content:s
 photo_html = '<div class="v3-photos">' + ''.join(
     f'<img class="v3-photo" src="data:image/jpeg;base64,{photo}" alt="ภาพประจำ dashboard">'
     for photo in photos if photo) + '</div>'
-st.markdown(f'<section class="v3-hero"><div><span class="v3-label">AI TRADING · S5B</span><h1>AI Trading<br>Decision System</h1><p>XAUUSD · H4 / H1 / M15 / M5</p><p>ข้อมูล MT5 · ประเมินด้วย Python · PAPER ONLY</p></div>{photo_html}</section>', unsafe_allow_html=True)
+st.markdown(f'<section class="v3-hero"><div><span class="v3-label">AI TRADING · H1CON AI</span><h1>AI Trading<br>Decision System</h1><p>XAUUSD · H4 / H1 / M15 / M5</p><p>ข้อมูล MT5 · ประเมินด้วย Python · PAPER ONLY</p></div>{photo_html}</section>', unsafe_allow_html=True)
 
 
 def fetch_latest():
@@ -253,7 +253,21 @@ def dashboard():
                        "ระดับราคาถูกใช้เมื่อพบปฏิกิริยา ไม่ใช่คะแนนความแข็งแรงที่ยืนยันแล้ว "
                        "เงื่อนไขเข้าและ RR เดิมยังทำงาน")
             st.write("**Policy:**", diagnostics.get("policy", "N/A"))
-            if diagnostics.get("policy") == "SESSION_BIAS_S5B_V1":
+            if diagnostics.get("policy") == "H1CON_AI_V1":
+                st.caption("H1CON AI: จังหวะเข้าจาก EA H1_con_cool (H1 EMA50/100 + แท่งย่อ M15 + RSI14) • "
+                           "AI (gradient boosting) ประเมินโอกาสถึง TP ก่อน SL • รับไม้เมื่อโอกาส > 55% • TP/SL 12.0 • "
+                           "ไม่มีตัวกรองช่วงเวลา • ถือได้ครั้งละไม้ • ไม่มีระบบแก้ไม้")
+                signal = diagnostics.get("last_signal") or {}
+                if signal.get("side"):
+                    p = signal.get("p")
+                    st.write("**สัญญาณล่าสุด:**", signal.get("side"), "| **AI ให้โอกาส:**",
+                             f"{p*100:.1f}%" if isinstance(p, (int, float)) else "N/A",
+                             "| **ผล:**", {"ENTERED": "เข้าไม้", "SKIPPED_BY_AI": "AI ไม่รับ", "TAKE": "เข้าไม้"}.get(signal.get("status"), signal.get("status")))
+                book = decision.get("paper_trade") or {}
+                if book.get("policy") and book.get("policy") != "H1CON_AI_V1":
+                    st.write("**ไม้ที่ถือ:** ไม้เดิมก่อนติดตั้ง (" + str(book.get("policy")) + ") ถือจนปิดตาม TP/SL เดิม")
+                st.caption("ข้อมูล V5 ด้านล่าง (selection / candidate) เป็นข้อมูลวิจัย ไม่ใช่ตัวตัดสินเข้าไม้")
+            elif diagnostics.get("policy") == "SESSION_BIAS_S5B_V1":
                 st.caption("S5B: เอเชีย 07:00–14:00 รับเฉพาะ BUY • นิวยอร์ก 19:30–02:00 รับเฉพาะ SELL • นอกช่วงไม่เปิดไม้ใหม่ • "
                            "H1 มีเทรนด์ = ย่อแตะ EMA20 M15 (SL 1.0 / TP 1.5 ATR) • M15 ไม่มีเทรนด์ = fade ขอบกรอบไปกึ่งกลาง • ถือได้ครั้งละไม้")
                 sess = {"ASIA": "เอเชีย", "NY": "นิวยอร์ก", "OUTSIDE": "นอกช่วงเทรด"}

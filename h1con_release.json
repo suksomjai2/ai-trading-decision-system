@@ -1,0 +1,20 @@
+{
+  "version": "1.0.0-paper",
+  "policy": "H1CON_AI_V1",
+  "baseline": "SESSION_BIAS_S5B_V1 8233361",
+  "mode": "PAPER_ONLY",
+  "decision": [
+    "Candidates: entry setup of the user's EA H1_con_cool v2.20 (H1 EMA50/EMA100 trend, M15 pullback candle with RSI14 < 48 / > 52 and confirmation), first entry only; no grid or martingale recovery",
+    "AI: gradient-boosted trees (scikit-learn HistGradientBoosting, exported to core/models/h1con_gbm_v1.json, evaluated in pure Python) estimate P(TP 12.0 before SL 12.0); take when P > 0.55",
+    "Exit: fixed TP 12.0 / SL 12.0 price units on observed quotes; one position at a time; no time-of-day filter",
+    "V5 engine still runs inside for audit and setup research; an S5B paper trade open at install keeps its id / TP / SL until it exits"
+  ],
+  "evidence": {
+    "data": "MT5 GOLD M5 Oct 2023 - Oct 2026 (same feed as live, 1482/1482 recorded bars identical)",
+    "walk_forward_out_of_sample": "30 months: 721 trades, +0.049 R/trade, spread 0.55 stress +0.036, max drawdown 180 price units, random-filter p = 0.03",
+    "by_period": "Apr 2024 - May 2025 +0.107 R/trade; May 2025 - Oct 2026 +0.006 R/trade (near break-even)",
+    "raw_setup_without_ai": "0.000 R/trade (1842 trades)",
+    "live_parity": "Live decision path vs offline rows on 4 months of bars: 467/467 identical side and AI probability"
+  },
+  "limits": "Small edge that weakened in the most recent 17 months; paper only; retrain monthly from new exports; no grid recovery"
+}

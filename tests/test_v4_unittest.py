@@ -78,7 +78,7 @@ class V4Tests(legacy.V3Tests):
         before=self.store.path.read_bytes()
         photo=self.root/'assets/dashboard_photo.jpeg';photo.parent.mkdir();photo.write_bytes(b'original-photo-test')
         path=export_audit(self.root,'1970-01-01','1970-01-01',self.root/'out',now=datetime.fromtimestamp(3600,timezone.utc))
-        self.assertTrue(path.name.startswith('AITrading-S5B-Audit-'))
+        self.assertTrue(path.name.startswith('AITrading-H1CON-Audit-'))
         with zipfile.ZipFile(path) as z:
             self.assertEqual(len(json.loads(z.read('entry_vetoes.json'))),1)
             meta=json.loads(z.read('metadata.json'));self.assertEqual(meta['export_version'],'AUDIT_V5_1')

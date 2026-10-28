@@ -236,13 +236,11 @@ def test_daily_report_reads_open_and_closed_s5b_trade(tmp_path):
     assert row['status'] == 'TP_TOUCHED' and report['counts']['tp_observed'] == 1 and report['counts']['open_positions'] == 0
 
 
-def test_live_server_runs_s5b_policy(tmp_path, monkeypatch):
-    from data_feed import hybrid_feed, live_server
-    monkeypatch.setattr(live_server, 'RUNTIME', tmp_path)
-    monkeypatch.setattr(live_server, '_store', None)
-    monkeypatch.setattr(hybrid_feed.time, 'time', lambda: NOW)
-    output = live_server.analyze(feed())
-    assert output['status'] == 'PROCESSED'
-    assert output['decision']['diagnostics']['policy'] == POLICY
-    assert output['decision']['diagnostics']['component_policy'] == 'CONTEXTUAL_REACTION_V5'
-    assert output['decision']['execution_mode'] == 'PAPER_ONLY'
+def test_s5b_policy_still_runs_standalone_with_store(tmp_path):
+    """S5B is no longer the live policy (H1CON_AI_V1 is); it must stay usable for rollback."""
+    h = SessionBiasS5B()
+    p = buy_pullback_payload(ASIA)
+    patch(h, p, ema=99.6, atr=2.0)
+    store = StateStore(tmp_path / 'engine.sqlite3')
+    out = store.process('XAUUSD', lambda s: h.process(ready_state(p), p))
+    assert out['diagnostics']['policy'] == POLICY and out['diagnostics']['component_policy'] == 'CONTEXTUAL_REACTION_V5'

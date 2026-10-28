@@ -106,7 +106,7 @@ class V5Tests(legacy.V3Tests):
         self.assertTrue(all(e['time']<3000 for e in events))
         path=export_audit(self.root,'1970-01-01','1970-01-01',self.root/'out',now=datetime.fromtimestamp(3000,timezone.utc))
         with zipfile.ZipFile(path) as z:
-            self.assertTrue(path.name.startswith('AITrading-S5B-Audit-'))
+            self.assertTrue(path.name.startswith('AITrading-H1CON-Audit-'))
             self.assertEqual(json.loads(z.read('setup_lifecycle.json'))[0]['status'],'OPEN')
             self.assertIn('continuation_entry_vetoes.json',z.namelist())
 

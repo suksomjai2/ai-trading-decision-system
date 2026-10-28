@@ -6,7 +6,7 @@ from data_feed.mt5_bridge import MT5Bridge
 from data_feed.pipeline import MarketDataPipeline
 from core.feature_engine import FeatureEngine
 from core.market_state import MarketState
-from core.session_bias_policy import SessionBiasS5B, POLICY
+from core.h1con_ai_policy import H1ConAI, POLICY
 
 
 RUNTIME = Path(__file__).resolve().parents[1] / "runtime"
@@ -15,7 +15,7 @@ bridge = MT5Bridge()
 feature_engine = FeatureEngine()
 market_state = MarketState()
 # Live paper decision policy; the V5 engine runs inside it for audit/legacy only.
-session_policy = SessionBiasS5B()
+session_policy = H1ConAI()
 
 
 _store = None
