@@ -10,6 +10,8 @@ class StateStore:
         self.path = Path(path)
         self.path.parent.mkdir(parents=True, exist_ok=True)
         with self.connect() as connection:
+            # WAL: readers (dashboard report, audit export) never block the live writer and vice versa.
+            connection.execute("PRAGMA journal_mode=WAL")
             connection.executescript('''
                 CREATE TABLE IF NOT EXISTS engine_state (
                     symbol TEXT PRIMARY KEY, value TEXT NOT NULL);

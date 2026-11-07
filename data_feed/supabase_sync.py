@@ -32,6 +32,17 @@ def upload_latest(previous=None):
                                          "status": "REPORT_UNAVAILABLE"}
         print("PAPER_REPORT ERROR", type(exc).__name__, flush=True)
 
+    # Shadow (H1CON_AI_V1) report and main-vs-shadow comparison never suppress the main report.
+    from data_feed.trade_report import build_comparison
+    try:
+        snapshot["shadow_report_session"] = build_report(ROOT / "runtime" / "engine.sqlite3", now,
+                                                         "SHADOW_ENTRY", "SHADOW_EXIT", shadow=True)
+        snapshot["system_compare"] = build_comparison(ROOT / "runtime" / "engine.sqlite3", now)
+    except (sqlite3.Error, ValueError, KeyError, TypeError) as exc:
+        snapshot["shadow_report_session"] = {"schema_version": 1, "mode": "PAPER_ONLY", "status": "REPORT_UNAVAILABLE"}
+        snapshot["system_compare"] = {"schema_version": 1, "mode": "PAPER_ONLY", "status": "REPORT_UNAVAILABLE"}
+        print("SHADOW_REPORT ERROR", type(exc).__name__, flush=True)
+
     # Research failures never suppress market or decision reports.
     try:
         from data_feed.research_observer import build_research_report
@@ -49,7 +60,10 @@ def upload_latest(previous=None):
 
     report_key = {key: value for key, value in snapshot["paper_report_session"].items()
                   if key not in ("generated_at_utc", "window_end_utc")}
-    token = (raw, json.dumps(report_key, sort_keys=True, allow_nan=False), json.dumps(snapshot['post_sl_research'].get('items', []), sort_keys=True), json.dumps(snapshot['setup_lifecycle'].get('items',[]),sort_keys=True), int(now // 60))
+    compare_key = {k: v for k, v in snapshot["system_compare"].items() if k != "generated_at_utc"}
+    shadow_key = {k: v for k, v in snapshot["shadow_report_session"].items() if k not in ("generated_at_utc", "window_end_utc")}
+    token = (raw, json.dumps(report_key, sort_keys=True, allow_nan=False),
+             json.dumps(compare_key, sort_keys=True, allow_nan=False), json.dumps(shadow_key, sort_keys=True, allow_nan=False), json.dumps(snapshot['post_sl_research'].get('items', []), sort_keys=True), json.dumps(snapshot['setup_lifecycle'].get('items',[]),sort_keys=True), int(now // 60))
     if token == previous:
         return previous
 

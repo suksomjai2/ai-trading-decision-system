@@ -27,12 +27,10 @@ def desktop():
     raise RuntimeError('Desktop not found; specify --output DIRECTORY')
 
 def snapshot(source,target):
-    with closing(sqlite3.connect(Path(source).resolve().as_uri()+'?mode=ro',uri=True,timeout=5)) as a:
-        with closing(sqlite3.connect(target)) as b:
-            deadline=time.monotonic()+30
-            def progress(status,remaining,total):
-                if time.monotonic()>deadline:raise TimeoutError('Audit snapshot busy for over 30 seconds; retry export later')
-            a.backup(b,pages=256,progress=progress,sleep=.05)
+    # One consistent read-only copy (VACUUM INTO); concurrent server writes cannot restart it,
+    # unlike the page-wise backup that timed out once the audit database grew.
+    with closing(sqlite3.connect(Path(source).resolve().as_uri()+'?mode=ro',uri=True,timeout=60)) as a:
+        a.execute('VACUUM INTO ?',(str(target),))
 
 def dump(path,value):
     path.write_text(json.dumps(value,ensure_ascii=False,indent=2,allow_nan=False),encoding='utf-8')
@@ -51,7 +49,7 @@ def export_audit(root,start_date,end_date,output=None,now=None):
     if start>=end:raise ValueError('No elapsed time in requested dates')
     context_start=start-timedelta(days=1)
     output=Path(output) if output else desktop();output.mkdir(parents=True,exist_ok=True)
-    name='AITrading-H1CON-Audit-'+start_date+'_'+end_date+'-'+now.astimezone(THAI).strftime('%Y%m%d-%H%M%S-%f')+'.zip'
+    name='AITrading-H1CONRAW-Audit-'+start_date+'_'+end_date+'-'+now.astimezone(THAI).strftime('%Y%m%d-%H%M%S-%f')+'.zip'
     destination=output/name
     with tempfile.TemporaryDirectory(prefix='AITrading-audit-') as tmp:
         folder=Path(tmp);db=folder/'audit-snapshot.sqlite3'
@@ -78,6 +76,18 @@ def export_audit(root,start_date,end_date,output=None,now=None):
         with (folder/'trades.csv').open('w',encoding='utf-8-sig',newline='') as f:
             writer=csv.DictWriter(f,fields,extrasaction='ignore');writer.writeheader()
             for tr in relevant:
+                move=(1 if tr['side']=='BUY' else -1)*(tr['exit_observed_price']-tr['entry_price']) if tr.get('exit_observed_price') is not None else None
+                writer.writerow({**tr,'observed_price_move':move})
+        shadow={}
+        for _,_,t,kind,raw in values:
+            if kind in ('SHADOW_ENTRY','SHADOW_EXIT'):
+                tr=json.loads(raw)['trade'];shadow[tr['id']]={**shadow.get(tr['id'],{}),**tr}
+        shadow_relevant=[t for t in shadow.values() if start.timestamp()<=t['entry_time']<end.timestamp()
+                         or start.timestamp()<=t.get('exit_time',-1)<end.timestamp()]
+        dump(folder/'shadow_trades.json',shadow_relevant)
+        with (folder/'shadow_trades.csv').open('w',encoding='utf-8-sig',newline='') as f:
+            writer=csv.DictWriter(f,fields,extrasaction='ignore');writer.writeheader()
+            for tr in shadow_relevant:
                 move=(1 if tr['side']=='BUY' else -1)*(tr['exit_observed_price']-tr['entry_price']) if tr.get('exit_observed_price') is not None else None
                 writer.writerow({**tr,'observed_price_move':move})
         dump(folder/'engine_state_at_export.json',state)
@@ -114,7 +124,7 @@ def export_audit(root,start_date,end_date,output=None,now=None):
         paths=[]
         for part in ['core','data_feed']:
             paths.extend((root/part).glob('*.py'))
-        paths.extend(root/p for p in ['run_vps_server.py','streamlit_app.py','v3_release.json','v4_release.json','v5_release.json','s5b_release.json','h1con_release.json','core/models/h1con_gbm_v1.json','docs/V5_ARCHITECTURE_RULES_TH.md'] if (root/p).exists())
+        paths.extend(root/p for p in ['run_vps_server.py','streamlit_app.py','v3_release.json','v4_release.json','v5_release.json','s5b_release.json','h1con_release.json','h1con_raw_release.json','core/models/h1con_gbm_v1.json','docs/V5_ARCHITECTURE_RULES_TH.md'] if (root/p).exists())
         for p in paths:
             rel=p.relative_to(root);target=folder/'source'/rel;target.parent.mkdir(parents=True,exist_ok=True)
             raw=p.read_bytes();target.write_bytes(raw);hashes[str(rel).replace('\\','/')]=hashlib.sha256(raw).hexdigest()
@@ -140,7 +150,9 @@ def export_audit(root,start_date,end_date,output=None,now=None):
                  'No credentials, raw runtime database, browser sessions or .env files included.']))
         (folder/'START_HERE_TH.txt').write_text('เริ่มที่ metadata.json แล้วอ่าน trades.csv / trades.json\n'
               'entry_vetoes.json บันทึก setup ที่ถูกยกเลิกเพราะ M15 สวนฝั่งก่อนเข้าไม้\n'
-              'ไม้จริงคือ ENTRY/EXIT (policy H1CON_AI_V1); V5_CANDIDATE_* เป็นสัญญาณ V5 สำหรับวิจัย; H1CON_SIGNAL_SKIPPED คือสัญญาณที่ AI ไม่รับ (มีค่าความน่าจะเป็น)\n'
+              'ระบบหลักคือ ENTRY/EXIT (policy H1CON_RAW_V1 = H1CON ไม่มี AI; ไม้ก่อนอัปเกรดอาจเป็น H1CON_AI_V1)\n'
+              'Shadow คือ SHADOW_ENTRY/SHADOW_EXIT (policy H1CON_AI_V1) อยู่ใน shadow_trades.csv; H1CON_SIGNAL_SKIPPED คือสัญญาณที่ AI ของ shadow ไม่รับ (มีค่าความน่าจะเป็น)\n'
+              'H1CON_SIGNAL_BUSY คือสัญญาณที่ระบบหลักไม่เข้าเพราะมีไม้เปิดอยู่; V5_CANDIDATE_* เป็นสัญญาณ V5 สำหรับวิจัย\n'
               'events.jsonl เป็นข้อมูลตัดสินใจ; post_sl_research.json และ decision_explanations.jsonl เป็นข้อมูลวิเคราะห์แยกส่วน\n'
               'setup_lifecycle.json และ setup_lifecycle_events.jsonl แยกต้นกำเนิด เหตุผลระหว่างรอ และหลักฐานตอนเข้า\n'
               'ตรวจ research_progress.json ว่า observer ตามข้อมูลทันหรือไม่ ช่วงข้อมูลขาดไม่เท่ากับยืนยันว่าไม่แตะ TP\n'

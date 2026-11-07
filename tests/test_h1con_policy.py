@@ -208,7 +208,8 @@ def test_duplicate_tick_storable_state_and_daily_report(tmp_path, force_buy):
     assert row['status'] == 'OPEN' and row['policy'] == POLICY and report['counts']['open_positions'] == 1
 
 
-def test_live_server_runs_h1con_policy(tmp_path, monkeypatch):
+def test_live_server_runs_h1con_raw_with_h1con_ai_as_shadow(tmp_path, monkeypatch):
+    """H1CON_AI_V1 is no longer the main live policy (H1CON_RAW_V1 is); it runs as the shadow."""
     from data_feed import hybrid_feed, live_server
     from tests.test_hybrid import NOW as FEED_NOW, feed
     monkeypatch.setattr(live_server, 'RUNTIME', tmp_path)
@@ -216,6 +217,7 @@ def test_live_server_runs_h1con_policy(tmp_path, monkeypatch):
     monkeypatch.setattr(hybrid_feed.time, 'time', lambda: FEED_NOW)
     output = live_server.analyze(feed())
     assert output['status'] == 'PROCESSED'
-    assert output['decision']['diagnostics']['policy'] == POLICY
+    assert output['decision']['diagnostics']['policy'] == 'H1CON_RAW_V1'
+    assert output['decision']['diagnostics']['shadow_policy'] == POLICY
     assert output['decision']['diagnostics']['component_policy'] == 'CONTEXTUAL_REACTION_V5'
     assert output['decision']['execution_mode'] == 'PAPER_ONLY'

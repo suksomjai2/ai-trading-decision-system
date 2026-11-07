@@ -1,0 +1,14 @@
+{
+  "release": "H1CON_RAW_V1",
+  "main_policy": "H1CON_RAW_V1",
+  "main_rule": "Every entry signal of the EA H1_con_cool (H1 EMA50/100 trend, no trade on a cross bar; M15 pullback with RSI14 <48 / >52 and a confirming bar), evaluated once per newly closed M15 bar; taken when no main position is open. TP = SL = 12.0 price units. No AI filter, no time-of-day filter, one position, no grid.",
+  "shadow_policy": "H1CON_AI_V1",
+  "shadow_rule": "Same signals; taken in a separate paper book only when the exported gradient-boosted model (core/models/h1con_gbm_v1.json, sha256 5b743c91e144...) gives P(TP before SL) > 0.55. Never affects the main decision.",
+  "events": {"main": ["ENTRY", "EXIT", "H1CON_SIGNAL_BUSY"], "shadow": ["SHADOW_ENTRY", "SHADOW_EXIT", "H1CON_SIGNAL_SKIPPED"]},
+  "dashboard": "System banner (main / shadow names and start time), stale-feed alert when quotes stop for more than 10 minutes during feed hours, main-vs-shadow cumulative comparison, separate daily reports.",
+  "data_sender": "mt5/AI_DataSender.mq5 2.10: BrokerUTCOffsetMinutes=-1 converts every bar and quote with the offset valid at its own time (XM: 120 winter / 180 EU summer). Needs compile + re-attach in MT5.",
+  "storage": "engine.sqlite3 switched to WAL journal mode; audit export uses one consistent VACUUM INTO snapshot.",
+  "evidence_note": "H1CON without AI: 3-year backtest about break-even before costs (-0.002R/trade, max DD 654 price units at 0.01 lot); 20 Oct - 7 Nov live data 37 trades, TP 23 / SL 14, +99 price units. The decision to make it the main paper policy is the user's; the AI version keeps running as the shadow for comparison.",
+  "execution_mode": "PAPER_ONLY",
+  "based_on": "be374f9 (H1CON_AI_V1, installed as a891d12)"
+}
