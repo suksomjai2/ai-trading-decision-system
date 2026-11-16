@@ -1,0 +1,13 @@
+{
+  "release": "H1CON_F1TP30_V1",
+  "main_policy": "H1CON_F1TP30_V1",
+  "main_rule": "Entry signal of the EA H1_con_cool (H1 EMA50/100 trend on closed bars, no trade on a cross bar; M15 pullback with RSI14 <48 / >52 and a confirming bar), evaluated once per newly closed M15 bar, no AI. Filter F1: BUY only if the last closed H1 bar closed above H1 EMA50, SELL only if below. TP = 30.0 / SL = 12.0 price units from the paper fill. One position, no grid, no time filter.",
+  "shadow_policy": "H1CON_RAW_V1",
+  "shadow_rule": "Previous main policy in a separate paper book: every H1_con_cool signal, TP = SL = 12.0. Never affects the main decision.",
+  "retired": "H1CON_AI_V1 shadow stops; its last state is kept under engine state 'retired_shadow'. Code and model stay in the project for rollback.",
+  "events": {"main": ["ENTRY", "EXIT", "H1CON_SIGNAL_BUSY", "H1CON_SIGNAL_FILTERED"], "shadow": ["SHADOW_ENTRY", "SHADOW_EXIT"]},
+  "evidence_note": "Pre-registered sprint 16 Nov 2026 on 3 years of M5 bars (lot 0.01): H1CON+F1 TP30/SL12 775 trades +1.48 per trade (t 2.08) vs random same-side entries with the same exit +0.52; positive every year; max DD about 284. Live recorded quotes 20 Oct - 16 Nov: 22 trades, 10 wins, +143.86, DD 63.83 (H1CON_RAW_V1 same period: 50 trades +45.06, DD 93.14). About 20 variants were tested, so the edge may be smaller than measured; win rate about 40-45 percent, losing streaks of 4-6 are normal. The decision to make it the main paper policy is the user's.",
+  "also": "audit export: zip name AITrading-H1CONF1-Audit-, runs directly as python data_feed\\audit_export.py (sys.path fix).",
+  "execution_mode": "PAPER_ONLY",
+  "based_on": "58ccf1e (H1CON_RAW_V1, installed as 796433f)"
+}

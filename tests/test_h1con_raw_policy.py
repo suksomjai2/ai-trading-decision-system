@@ -143,13 +143,11 @@ def test_store_reports_and_comparison(tmp_path, force_buy):
     shadow = build_report(store.path, NOW + 60, 'SHADOW_ENTRY', 'SHADOW_EXIT', shadow=True)
     assert [r['policy'] for r in main['trades']] == [POLICY] and main['counts']['tp_observed'] == 1
     assert [r['policy'] for r in shadow['trades']] == [SHADOW_POLICY] and shadow['counts']['tp_observed'] == 1
-    cmp_ = build_comparison(store.path, NOW + 60)
-    assert cmp_['status'] == 'OK'
-    assert cmp_['systems']['main']['tp'] == 1 and cmp_['systems']['main']['net_price_move'] == pytest.approx(12.1)
-    assert cmp_['systems']['shadow']['tp'] == 1 and cmp_['systems']['shadow']['policy'] == SHADOW_POLICY
+    # build_comparison now reads the H1CON_F1TP30_V1 / H1CON_RAW_V1 books (tests/test_h1con_f1_policy.py)
 
 
-def test_live_server_runs_raw_policy_with_shadow(tmp_path, monkeypatch):
+def test_live_server_runs_f1_policy_raw_is_shadow(tmp_path, monkeypatch):
+    """H1CON_RAW_V1 is no longer the main live policy (H1CON_F1TP30_V1 is); it runs as the shadow."""
     from data_feed import hybrid_feed, live_server
     from tests.test_hybrid import NOW as FEED_NOW, feed
     monkeypatch.setattr(live_server, 'RUNTIME', tmp_path)
@@ -158,7 +156,7 @@ def test_live_server_runs_raw_policy_with_shadow(tmp_path, monkeypatch):
     output = live_server.analyze(feed())
     assert output['status'] == 'PROCESSED'
     d = output['decision']['diagnostics']
-    assert d['policy'] == POLICY and d['shadow_policy'] == SHADOW_POLICY
+    assert d['policy'] == 'H1CON_F1TP30_V1' and d['shadow_policy'] == POLICY
     assert d['component_policy'] == 'CONTEXTUAL_REACTION_V5' and output['decision']['execution_mode'] == 'PAPER_ONLY'
 
 
@@ -180,7 +178,7 @@ def test_dashboard_feed_hours_and_names():
     assert not open_(utc(2026, 11, 1, 23, 30))       # Sunday 18:30 New York (feed starts ~21:00)
     assert not open_(utc(2026, 10, 28, 21, 0))       # Wed 17:00 EDT (summer time) -> daily break
     assert open_(utc(2026, 10, 28, 23, 30))          # Wed 19:30 EDT -> open
-    assert "MAIN_POLICY = \"H1CON_RAW_V1\"" in src and "SHADOW_POLICY = \"H1CON_AI_V1\"" in src
+    assert "MAIN_POLICY = \"H1CON_F1TP30_V1\"" in src and "SHADOW_POLICY = \"H1CON_RAW_V1\"" in src
 
 
 def test_store_uses_wal_and_export_includes_shadow_trades(tmp_path, force_buy):

@@ -30,7 +30,7 @@ st.markdown('<style>\n.v3-hero{display:flex;align-items:center;justify-content:s
 photo_html = '<div class="v3-photos">' + ''.join(
     f'<img class="v3-photo" src="data:image/jpeg;base64,{photo}" alt="ภาพประจำ dashboard">'
     for photo in photos if photo) + '</div>'
-st.markdown(f'<section class="v3-hero"><div><span class="v3-label">AI TRADING · H1CON_RAW_V1</span><h1>AI Trading<br>Decision System</h1><p>XAUUSD · H4 / H1 / M15 / M5</p><p>ระบบหลัก: H1CON ไม่มี AI · Shadow: H1CON+AI</p><p>ข้อมูล MT5 · ประเมินด้วย Python · PAPER ONLY</p></div>{photo_html}</section>', unsafe_allow_html=True)
+st.markdown(f'<section class="v3-hero"><div><span class="v3-label">AI TRADING · H1CON_F1TP30_V1</span><h1>AI Trading<br>Decision System</h1><p>XAUUSD · H4 / H1 / M15 / M5</p><p>ระบบหลัก: H1CON + F1 · TP30/SL12 · Shadow: H1CON TP/SL 12</p><p>ข้อมูล MT5 · ประเมินด้วย Python · PAPER ONLY</p></div>{photo_html}</section>', unsafe_allow_html=True)
 
 
 def fetch_latest():
@@ -72,8 +72,8 @@ def fetch_latest():
     return row
 
 
-MAIN_POLICY = "H1CON_RAW_V1"
-SHADOW_POLICY = "H1CON_AI_V1"
+MAIN_POLICY = "H1CON_F1TP30_V1"
+SHADOW_POLICY = "H1CON_RAW_V1"
 
 
 def _nth_sunday(year, month, n):
@@ -124,9 +124,9 @@ def show_system_banner(diagnostics):
     if policy == MAIN_POLICY:
         since = diagnostics.get("main_policy_since")
         since_text = datetime.fromtimestamp(since, bangkok).strftime("%d/%m/%Y %H:%M") if since else "—"
-        st.success(f"✅ ระบบหลัก: **{MAIN_POLICY}** — H1CON ไม่มี AI (เข้าทุกสัญญาณ, TP/SL 12, ถือครั้งละไม้) "
+        st.success(f"✅ ระบบหลัก: **{MAIN_POLICY}** — H1CON ไม่มี AI + ตัวกรอง F1 (ปิด H1 ล่าสุดต้องอยู่ฝั่งเทรนด์ของ EMA50), TP 30 / SL 12, ถือครั้งละไม้ "
                    f"• เริ่มใช้ตั้งแต่ {since_text} น.")
-        st.info(f"🔍 Shadow: **{SHADOW_POLICY}** — H1CON + AI (รับไม้เมื่อโอกาส > 55%) จำลองคู่ขนาน "
+        st.info(f"🔍 Shadow: **{SHADOW_POLICY}** — H1CON ไม่มี AI เข้าทุกสัญญาณ TP/SL 12 (ระบบหลักเดิม) จำลองคู่ขนาน "
                 "ไม่มีผลต่อการตัดสินใจของระบบหลัก")
     else:
         st.error(f"ระบบบน VPS ยังรายงาน policy = {policy or 'N/A'} (ยังไม่ใช่ {MAIN_POLICY}) — การอัปเกรดยังไม่สมบูรณ์")
@@ -142,7 +142,7 @@ def show_compare(report):
     if since:
         st.caption("ตั้งแต่เวลาไทย " + datetime.fromisoformat(since).astimezone(timezone(timedelta(hours=7))).strftime("%d/%m/%Y %H:%M"))
     cols = st.columns(2)
-    for col, key, title in ((cols[0], "main", "ระบบหลัก · H1CON ไม่มี AI"), (cols[1], "shadow", "Shadow · H1CON + AI")):
+    for col, key, title in ((cols[0], "main", "ระบบหลัก · H1CON + F1 · TP30/SL12"), (cols[1], "shadow", "Shadow · H1CON TP/SL 12")):
         v = (report.get("systems") or {}).get(key) or {}
         with col:
             st.markdown(f"**{title}** (`{v.get('policy', 'N/A')}`)")
@@ -163,7 +163,7 @@ def price(value):
     return "N/A"
 
 
-def show_paper_report(report, title="ออเดอร์จำลองรอบปัจจุบัน · ระบบหลัก H1CON_RAW_V1 · เริ่มรอบใหม่ 07:00 น."):
+def show_paper_report(report, title="ออเดอร์จำลองรอบปัจจุบัน · ระบบหลัก H1CON_F1TP30_V1 · เริ่มรอบใหม่ 07:00 น."):
     st.divider()
     st.subheader(title)
     st.caption("ผลจากการรันสด PAPER ONLY — ไม่มีการส่งออเดอร์เข้าบัญชี MT5")
@@ -341,24 +341,32 @@ def dashboard():
                        "เงื่อนไขเข้าและ RR เดิมยังทำงาน")
             st.write("**Policy:**", diagnostics.get("policy", "N/A"))
             if diagnostics.get("policy") == MAIN_POLICY:
-                st.caption("H1CON_RAW_V1: จังหวะเข้าจาก EA H1_con_cool (H1 EMA50/100 + แท่งย่อ M15 + RSI14) • "
-                           "เข้าทุกสัญญาณเมื่อไม่มีไม้เปิด (ไม่มี AI กรอง) • TP/SL 12.0 • ไม่มีตัวกรองช่วงเวลา • "
+                st.caption("H1CON_F1TP30_V1: จังหวะเข้าจาก EA H1_con_cool (H1 EMA50/100 + แท่งย่อ M15 + RSI14) • "
+                           "ตัวกรอง F1: BUY เมื่อแท่ง H1 ที่ปิดล่าสุดอยู่เหนือ EMA50 / SELL เมื่ออยู่ใต้ EMA50 • "
+                           "ไม่มี AI กรอง • TP 30.0 / SL 12.0 • ไม่มีตัวกรองช่วงเวลา • "
                            "ถือได้ครั้งละไม้ • ไม่มีระบบแก้ไม้ • ค่าโอกาสจาก AI บันทึกไว้เพื่อเทียบเท่านั้น")
                 signal = diagnostics.get("last_signal") or {}
                 if signal.get("side"):
                     p = signal.get("p")
                     st.write("**สัญญาณล่าสุด:**", signal.get("side"), "| **ระบบหลัก:**",
-                             {"ENTERED": "เข้าไม้", "MAIN_BUSY": "มีไม้เปิดอยู่ ไม่เข้าเพิ่ม"}.get(signal.get("status"), signal.get("status")),
-                             "| **AI (shadow) ให้โอกาส:**", f"{p*100:.1f}%" if isinstance(p, (int, float)) else "N/A",
-                             "| **Shadow:**", {"SHADOW_ENTERED": "เข้าไม้", "SKIPPED_BY_AI": "AI ไม่รับ",
+                             {"ENTERED": "เข้าไม้", "MAIN_BUSY": "มีไม้เปิดอยู่ ไม่เข้าเพิ่ม",
+                              "FILTERED_F1": "F1 ตัดออก (ราคาอยู่ผิดฝั่ง EMA50)"}.get(signal.get("status"), signal.get("status")),
+                             "| **AI ให้โอกาส (ข้อมูลเท่านั้น):**", f"{p*100:.1f}%" if isinstance(p, (int, float)) else "N/A",
+                             "| **Shadow:**", {"SHADOW_ENTERED": "เข้าไม้",
                                               "SHADOW_BUSY": "มีไม้เปิดอยู่"}.get(signal.get("shadow_status"), signal.get("shadow_status") or "—"))
+                    f1 = signal.get("f1") or {}
+                    if f1:
+                        st.write("**F1:** ปิด H1 ล่าสุด", price(f1.get("h1_close")), "| EMA50", price(f1.get("h1_ema50")),
+                                 "| ผ่าน" if f1.get("ok") else "| ไม่ผ่าน")
                 book = decision.get("paper_trade") or {}
                 if book.get("policy") and book.get("policy") != MAIN_POLICY:
                     st.write("**ไม้ที่ถือ:** ไม้เดิมก่อนอัปเกรด (" + str(book.get("policy")) + ") ถือจนปิดตาม TP/SL เดิม")
                 sp = diagnostics.get("shadow_position") or {}
-                st.write("**ไม้ของ Shadow (H1CON+AI):**", sp.get("side") or "ไม่มี",
+                st.write("**ไม้ของ Shadow (H1CON TP/SL 12):**", sp.get("side") or "ไม่มี",
                          ("| เข้า " + price(sp.get("entry_price")) + " | TP " + price(sp.get("tp")) + " | SL " + price(sp.get("sl"))) if sp else "")
                 st.caption("ข้อมูล V5 ด้านล่าง (selection / candidate) เป็นข้อมูลวิจัย ไม่ใช่ตัวตัดสินเข้าไม้")
+            elif diagnostics.get("policy") == "H1CON_RAW_V1":
+                st.caption("H1CON_RAW_V1 (ระบบหลักเดิม): เข้าทุกสัญญาณของ H1_con_cool • TP/SL 12.0 • ไม่มี AI กรอง • ถือได้ครั้งละไม้")
             elif diagnostics.get("policy") == "H1CON_AI_V1":
                 st.caption("H1CON AI: จังหวะเข้าจาก EA H1_con_cool (H1 EMA50/100 + แท่งย่อ M15 + RSI14) • "
                            "AI (gradient boosting) ประเมินโอกาสถึง TP ก่อน SL • รับไม้เมื่อโอกาส > 55% • TP/SL 12.0 • "
@@ -439,7 +447,7 @@ def dashboard():
     show_compare(snapshot.get("system_compare"))
     show_paper_report(snapshot.get("paper_report_session"))
     show_paper_report(snapshot.get("shadow_report_session"),
-                      "Shadow · H1CON + AI (H1CON_AI_V1) · ออเดอร์จำลองรอบปัจจุบัน · ไม่มีผลต่อระบบหลัก")
+                      "Shadow · H1CON TP/SL 12 (H1CON_RAW_V1) · ออเดอร์จำลองรอบปัจจุบัน · ไม่มีผลต่อระบบหลัก")
     show_post_sl(snapshot.get("post_sl_research"))
     with st.expander('ประวัติเหตุผล setup: ต้นกำเนิด → ระหว่างรอ → ตอนเข้า',expanded=False):
         report=snapshot.get('setup_lifecycle') or {}

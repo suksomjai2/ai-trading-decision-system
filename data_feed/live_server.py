@@ -6,7 +6,7 @@ from data_feed.mt5_bridge import MT5Bridge
 from data_feed.pipeline import MarketDataPipeline
 from core.feature_engine import FeatureEngine
 from core.market_state import MarketState
-from core.h1con_raw_policy import H1ConRaw, POLICY, SHADOW_POLICY
+from core.h1con_f1_policy import H1ConF1, POLICY, SHADOW_POLICY
 
 
 RUNTIME = Path(__file__).resolve().parents[1] / "runtime"
@@ -14,9 +14,9 @@ RUNTIME = Path(__file__).resolve().parents[1] / "runtime"
 bridge = MT5Bridge()
 feature_engine = FeatureEngine()
 market_state = MarketState()
-# Live paper decision policy H1CON_RAW_V1 (no AI) with H1CON_AI_V1 as shadow;
+# Live paper decision policy H1CON_F1TP30_V1 (no AI, F1 filter, TP30/SL12) with H1CON_RAW_V1 as shadow;
 # the V5 engine runs inside it for audit/legacy only.
-session_policy = H1ConRaw()
+session_policy = H1ConF1()
 
 
 _store = None

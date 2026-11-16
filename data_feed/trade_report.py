@@ -107,7 +107,7 @@ def build_report(path, now, entry_kind='ENTRY', exit_kind='EXIT', shadow=False):
 
 
 def build_comparison(path, now):
-    """Cumulative main (H1CON_RAW_V1) vs shadow (H1CON_AI_V1) since the main policy started; price units."""
+    """Cumulative main (H1CON_F1TP30_V1) vs shadow (H1CON_RAW_V1) since the main policy started; price units."""
     out = {'schema_version': 1, 'mode': 'PAPER_ONLY', 'status': 'OK', 'generated_at_utc': iso(now),
            'since_utc': None, 'systems': {}}
     path = Path(path)
@@ -125,8 +125,8 @@ def build_comparison(path, now):
             return out
         out['since_utc'] = iso(since)
         for name, kinds, policy, live in (
-                ('main', ('ENTRY', 'EXIT'), 'H1CON_RAW_V1', state.get('trade')),
-                ('shadow', ('SHADOW_ENTRY', 'SHADOW_EXIT'), 'H1CON_AI_V1', (state.get('shadow') or {}).get('book'))):
+                ('main', ('ENTRY', 'EXIT'), 'H1CON_F1TP30_V1', state.get('trade')),
+                ('shadow', ('SHADOW_ENTRY', 'SHADOW_EXIT'), 'H1CON_RAW_V1', (state.get('shadow') or {}).get('book'))):
             trades = {}
             for (raw,) in connection.execute(
                     'SELECT value FROM events WHERE symbol=? AND kind IN (?,?) AND time>=? AND time<=? ORDER BY id',

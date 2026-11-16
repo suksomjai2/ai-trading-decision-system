@@ -41,7 +41,13 @@ def _quote_exit(trade, now, bid, ask, previous_quote):
 
 
 class H1ConRaw(H1ConAI):
-    """Main = H1CON without AI; shadow = H1CON_AI_V1. Reuses H1ConAI.decide for signal + probability."""
+    """Main = H1CON without AI; shadow = H1CON_AI_V1. Reuses H1ConAI.decide for signal + probability.
+    Names are class attributes so a subclass (core.h1con_f1_policy) can reuse process() unchanged."""
+    MAIN = POLICY
+    SHADOW = SHADOW_POLICY
+    LABEL = SYSTEM_LABEL
+    ENTRY_REASON = 'H1CON_RAW_ENTRY'
+    WAIT_REASONS = {'MAIN_BUSY': 'H1CON_SIGNAL_WHILE_POSITION_OPEN'}
 
     @staticmethod
     def migrate(state):
@@ -118,13 +124,13 @@ class H1ConRaw(H1ConAI):
 
         result = self._result(value, state, book_events, info)
         d = result['diagnostics']
-        d.update(policy=POLICY, system_label=SYSTEM_LABEL, shadow_policy=SHADOW_POLICY,
+        d.update(policy=self.MAIN, system_label=self.LABEL, shadow_policy=self.SHADOW,
                  main_policy_since=state.get('main_policy_since'),
                  shadow_position=deepcopy(shadow['book']))
         if result.get('reason') == 'H1CON_AI_ENTRY':
-            result['reason'] = 'H1CON_RAW_ENTRY'
-        if result.get('reason') == 'WAIT_H1CON_SETUP' and info and info.get('status') == 'MAIN_BUSY':
-            result['reason'] = 'H1CON_SIGNAL_WHILE_POSITION_OPEN'
+            result['reason'] = self.ENTRY_REASON
+        if result.get('reason') == 'WAIT_H1CON_SETUP' and info and info.get('status') in self.WAIT_REASONS:
+            result['reason'] = self.WAIT_REASONS[info['status']]
         if evaluation is not None:
             evaluation.update(component_stage=evaluation.get('stage'), component_reason=evaluation.get('reason'),
                               stage=result['state'], reason=result['reason'],

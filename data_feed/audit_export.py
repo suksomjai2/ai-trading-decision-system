@@ -49,7 +49,7 @@ def export_audit(root,start_date,end_date,output=None,now=None):
     if start>=end:raise ValueError('No elapsed time in requested dates')
     context_start=start-timedelta(days=1)
     output=Path(output) if output else desktop();output.mkdir(parents=True,exist_ok=True)
-    name='AITrading-H1CONRAW-Audit-'+start_date+'_'+end_date+'-'+now.astimezone(THAI).strftime('%Y%m%d-%H%M%S-%f')+'.zip'
+    name='AITrading-H1CONF1-Audit-'+start_date+'_'+end_date+'-'+now.astimezone(THAI).strftime('%Y%m%d-%H%M%S-%f')+'.zip'
     destination=output/name
     with tempfile.TemporaryDirectory(prefix='AITrading-audit-') as tmp:
         folder=Path(tmp);db=folder/'audit-snapshot.sqlite3'
@@ -124,7 +124,7 @@ def export_audit(root,start_date,end_date,output=None,now=None):
         paths=[]
         for part in ['core','data_feed']:
             paths.extend((root/part).glob('*.py'))
-        paths.extend(root/p for p in ['run_vps_server.py','streamlit_app.py','v3_release.json','v4_release.json','v5_release.json','s5b_release.json','h1con_release.json','h1con_raw_release.json','core/models/h1con_gbm_v1.json','docs/V5_ARCHITECTURE_RULES_TH.md'] if (root/p).exists())
+        paths.extend(root/p for p in ['run_vps_server.py','streamlit_app.py','v3_release.json','v4_release.json','v5_release.json','s5b_release.json','h1con_release.json','h1con_raw_release.json','h1con_f1_release.json','core/models/h1con_gbm_v1.json','docs/V5_ARCHITECTURE_RULES_TH.md'] if (root/p).exists())
         for p in paths:
             rel=p.relative_to(root);target=folder/'source'/rel;target.parent.mkdir(parents=True,exist_ok=True)
             raw=p.read_bytes();target.write_bytes(raw);hashes[str(rel).replace('\\','/')]=hashlib.sha256(raw).hexdigest()
@@ -150,8 +150,9 @@ def export_audit(root,start_date,end_date,output=None,now=None):
                  'No credentials, raw runtime database, browser sessions or .env files included.']))
         (folder/'START_HERE_TH.txt').write_text('เริ่มที่ metadata.json แล้วอ่าน trades.csv / trades.json\n'
               'entry_vetoes.json บันทึก setup ที่ถูกยกเลิกเพราะ M15 สวนฝั่งก่อนเข้าไม้\n'
-              'ระบบหลักคือ ENTRY/EXIT (policy H1CON_RAW_V1 = H1CON ไม่มี AI; ไม้ก่อนอัปเกรดอาจเป็น H1CON_AI_V1)\n'
-              'Shadow คือ SHADOW_ENTRY/SHADOW_EXIT (policy H1CON_AI_V1) อยู่ใน shadow_trades.csv; H1CON_SIGNAL_SKIPPED คือสัญญาณที่ AI ของ shadow ไม่รับ (มีค่าความน่าจะเป็น)\n'
+              'ระบบหลักคือ ENTRY/EXIT (policy H1CON_F1TP30_V1 = H1CON ไม่มี AI + ตัวกรอง F1 + TP30/SL12; ไม้ก่อนอัปเกรดอาจเป็น H1CON_RAW_V1)\n'
+              'Shadow คือ SHADOW_ENTRY/SHADOW_EXIT (policy H1CON_RAW_V1 = TP/SL 12 ทุกสัญญาณ) อยู่ใน shadow_trades.csv (ไม้ก่อนอัปเกรดอาจเป็น H1CON_AI_V1)\n'
+              'H1CON_SIGNAL_FILTERED คือสัญญาณที่ F1 ตัดออก (ปิด H1 ล่าสุดอยู่ผิดฝั่ง EMA50) ระบบหลักไม่เข้า แต่ shadow ยังเข้า\n'
               'H1CON_SIGNAL_BUSY คือสัญญาณที่ระบบหลักไม่เข้าเพราะมีไม้เปิดอยู่; V5_CANDIDATE_* เป็นสัญญาณ V5 สำหรับวิจัย\n'
               'events.jsonl เป็นข้อมูลตัดสินใจ; post_sl_research.json และ decision_explanations.jsonl เป็นข้อมูลวิเคราะห์แยกส่วน\n'
               'setup_lifecycle.json และ setup_lifecycle_events.jsonl แยกต้นกำเนิด เหตุผลระหว่างรอ และหลักฐานตอนเข้า\n'
@@ -173,4 +174,7 @@ def main():
     parser.add_argument('--output',type=Path)
     a=parser.parse_args();print(export_audit(a.project,a.start,a.end,a.output))
 
-if __name__=='__main__':main()
+if __name__=='__main__':
+    import sys
+    sys.path.insert(0,str(Path(__file__).resolve().parents[1]))   # allow: python data_feed\audit_export.py
+    main()

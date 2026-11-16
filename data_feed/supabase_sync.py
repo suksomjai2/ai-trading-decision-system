@@ -32,7 +32,7 @@ def upload_latest(previous=None):
                                          "status": "REPORT_UNAVAILABLE"}
         print("PAPER_REPORT ERROR", type(exc).__name__, flush=True)
 
-    # Shadow (H1CON_AI_V1) report and main-vs-shadow comparison never suppress the main report.
+    # Shadow (H1CON_RAW_V1) report and main-vs-shadow comparison never suppress the main report.
     from data_feed.trade_report import build_comparison
     try:
         snapshot["shadow_report_session"] = build_report(ROOT / "runtime" / "engine.sqlite3", now,
